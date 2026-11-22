@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from "@react-google-maps/api";
+import { requestJson } from "../../../../services/apiClient";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_Maps_API_KEY || "";
@@ -109,7 +110,16 @@ function SkeletonCard() {
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────────
-export default function FinderMap() {
+function LoadedFinderMap() {
+  const { isLoaded, loadError } = useJsApiLoader({ googleMapsApiKey: GOOGLE_MAPS_API_KEY });
+  return <FinderMap mapsLoaded={isLoaded} mapsUnavailable={Boolean(loadError)} />;
+}
+
+export default function HealthcareNetwork() {
+  return GOOGLE_MAPS_API_KEY ? <LoadedFinderMap /> : <FinderMap mapsLoaded={false} mapsUnavailable />;
+}
+
+function FinderMap({ mapsLoaded, mapsUnavailable }) {
   const [, setIsDarkMode] = useState(false);
   const [isPageLoading, setIsPageLoading] = useState(true);
   const [locationLoading, setLocationLoading] = useState(true);
@@ -117,6 +127,7 @@ export default function FinderMap() {
   const [userLocation, setUserLocation] = useState(null);
   const [facilities, setFacilities] = useState([]);
   const [selectedFacility, setSelectedFacility] = useState(null);
+  const [facilityDetails, setFacilityDetails] = useState(null);
   const [activeFilter, setActiveFilter] = useState("hospital");
   const [locationError, setLocationError] = useState("");
   const [apiError, setApiError] = useState("");
@@ -126,12 +137,6 @@ export default function FinderMap() {
   const isSmall = typeof window !== "undefined" && window.matchMedia("(max-width: 480px)").matches;
 
   // ── Load Google Maps JS SDK ───────────────────────────────────────────────
-  const { isLoaded: mapsLoaded, loadError: mapsLoadError } = useJsApiLoader({
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-    libraries: ["places"],
-  });
-
-  // ── Theme detection ───────────────────────────────────────────────────────
   useEffect(() => {
     const check = () => setIsDarkMode(document.documentElement.getAttribute("data-theme") === "dark");
     check();
@@ -211,35 +216,43 @@ export default function FinderMap() {
   }, []);
 
   // ── Fetch facilities from backend ─────────────────────────────────────────
-  const fetchFacilities = useCallback(async (facilityType) => {
+  useEffect(() => {
     if (!userLocation) return;
+    const controller = new AbortController();
+    const query = new URLSearchParams({
+      latitude: String(userLocation.lat), longitude: String(userLocation.lng), facility_type: activeFilter,
+    });
     setFacilitiesLoading(true);
     setApiError("");
     setSelectedFacility(null);
-
-    try {
-      const url = `/api/v1/nearby-finder?latitude=${userLocation.lat}&longitude=${userLocation.lng}&facility_type=${facilityType}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || `Server error: ${res.status}`);
+    requestJson("/api/v1/nearby-finder?" + query, { signal: controller.signal }).then(data => {
+      if (!controller.signal.aborted) setFacilities(data.facilities || []);
+    }).catch(error => {
+      if (!controller.signal.aborted) {
+        setApiError(error.message);
+        setFacilities([]);
       }
-      const data = await res.json();
-      setFacilities(data.facilities || []);
-    } catch (err) {
-      setApiError(err.message || "Failed to fetch nearby facilities.");
-      setFacilities([]);
-    } finally {
-      setFacilitiesLoading(false);
-    }
-  }, [userLocation]);
+    }).finally(() => {
+      if (!controller.signal.aborted) setFacilitiesLoading(false);
+    });
+    return () => controller.abort();
+  }, [userLocation, activeFilter]);
 
-  // Auto-fetch when location ready or filter changes
+  const selectedId = selectedFacility?.id;
   useEffect(() => {
-    if (userLocation) fetchFacilities(activeFilter);
-  }, [userLocation, activeFilter, fetchFacilities]);
+    setFacilityDetails(null);
+    if (!selectedId) return;
+    const controller = new AbortController();
+    requestJson("/api/v1/facility-details/" + encodeURIComponent(selectedId), { signal: controller.signal })
+      .then(data => {
+        if (!controller.signal.aborted) setFacilityDetails(data.details);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setFacilityDetails({ id: selectedId, unavailable: true });
+      });
+    return () => controller.abort();
+  }, [selectedId]);
 
-  // ── Map callbacks ─────────────────────────────────────────────────────────
   const onMapLoad = useCallback((map) => setMapRef(map), []);
 
   const onMapUnmount = useCallback(() => setMapRef(null), []);
@@ -354,7 +367,7 @@ export default function FinderMap() {
     // Main grid
     mainGrid: {
       display: "grid",
-      gridTemplateColumns: isMobile ? "1fr" : "1fr 380px",
+      gridTemplateColumns: isMobile || mapsUnavailable ? "1fr" : "1fr 380px",
       gridTemplateRows: isMobile ? "460px auto" : "620px",
       gap: isSmall ? "16px" : "24px",
       animation: "scaleIn 0.7s ease-out 0.2s backwards",
@@ -608,15 +621,15 @@ export default function FinderMap() {
               </div>
             </div>
           )}
-          {mapsLoadError && (
+          {mapsUnavailable && (
             <div style={S.errorBox}>
               <span style={{ fontSize: "1.3rem" }}>🗺️</span>
               <div>
                 <div style={{ color: "#fca5a5", fontWeight: 700, marginBottom: "4px" }}>
-                  Google Maps Failed to Load
+                  Map view unavailable
                 </div>
                 <div style={S.errorText}>
-                  Check that your VITE_Maps_API_KEY is valid and has Maps JavaScript API enabled.
+                  Nearby results and directions are available in the list.
                 </div>
               </div>
             </div>
@@ -652,7 +665,7 @@ export default function FinderMap() {
               <div
                 style={{
                   ...S.mapPanel,
-                  display: isMobile && isListView ? "none" : "block",
+                  display: mapsUnavailable || (isMobile && isListView) ? "none" : "block",
                 }}
               >
                 {/* Map top bar */}
@@ -682,7 +695,7 @@ export default function FinderMap() {
                   </div>
                 )}
 
-                {mapsLoaded && userLocation && !mapsLoadError ? (
+                {mapsLoaded && userLocation && !mapsUnavailable ? (
                   <GoogleMap
                     mapContainerStyle={MAP_CONTAINER_STYLE}
                     center={userLocation}
@@ -713,7 +726,7 @@ export default function FinderMap() {
 
                     {/* Facility markers */}
                     {facilities.map((facility) => (
-                      facility.geometry?.lat && facility.geometry?.lng && (
+                      facility.geometry && (
                         <Marker
                           key={facility.id}
                           position={{ lat: facility.geometry.lat, lng: facility.geometry.lng }}
@@ -739,7 +752,7 @@ export default function FinderMap() {
                     ))}
 
                     {/* InfoWindow */}
-                    {selectedFacility && selectedFacility.geometry?.lat && (
+                    {selectedFacility?.geometry && (
                       <InfoWindow
                         position={{ lat: selectedFacility.geometry.lat, lng: selectedFacility.geometry.lng }}
                         onCloseClick={() => setSelectedFacility(null)}
@@ -774,7 +787,7 @@ export default function FinderMap() {
                       </InfoWindow>
                     )}
                   </GoogleMap>
-                ) : !mapsLoadError && (
+                ) : !mapsUnavailable && (
                   <div style={{
                     width: "100%", height: "100%", background: "#0d1a2d",
                     display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "16px",
@@ -788,12 +801,15 @@ export default function FinderMap() {
               {/* FACILITY LIST PANEL */}
               <div style={{
                 ...S.listPanel,
-                display: isMobile && !isListView ? "none" : "flex",
+                display: !mapsUnavailable && isMobile && !isListView ? "none" : "flex",
               }}>
                 <div style={S.listHeader}>
                   <span style={S.listTitle}>
                     {activeFilterConfig.icon}&nbsp; Nearby {activeFilterConfig.label}
                   </span>
+                  {isMobile && mapsLoaded && !mapsUnavailable && isListView && (
+                    <button type="button" style={S.toggleBtn(false)} onClick={() => setIsListView(false)}>Map</button>
+                  )}
                   <span style={S.countBadge}>
                     {facilitiesLoading ? "…" : `${facilities.length} found`}
                   </span>
@@ -807,7 +823,7 @@ export default function FinderMap() {
                       <div style={S.emptyIcon}>🏥</div>
                       <div style={S.emptyTitle}>No facilities found</div>
                       <div style={S.emptyText}>
-                        Try a different filter or expand your search radius.
+                        Try a different facility type.
                       </div>
                     </div>
                   ) : (
@@ -821,15 +837,21 @@ export default function FinderMap() {
                             ...S.facilityCard(isSelected),
                             animation: `fadeInUp 0.4s ease-out ${idx * 0.05}s backwards`,
                           }}
-                          onClick={() => {
-                            handleMarkerClick(facility);
-                            if (isMobile) setIsListView(false);
-                          }}
+                          onClick={() => handleMarkerClick(facility)}
                         >
                           <div style={S.cardAccent(activeFilterConfig)} />
                           <div style={{ paddingLeft: "8px" }}>
                             <div style={S.cardName}>{facility.name}</div>
                             <div style={S.cardAddr}>📍 {facility.vicinity}</div>
+                            {isSelected && facilityDetails?.id === facility.id && (
+                              <div style={S.cardAddr} onClick={event => event.stopPropagation()}>
+                                {facilityDetails.unavailable && <span>Contact details unavailable</span>}
+                                {facilityDetails.phone && <a href={"tel:" + facilityDetails.phone.replace(/[^\d+]/g, "")}>{facilityDetails.phone}</a>}
+                                {facilityDetails.website && /^https?:\/\//i.test(facilityDetails.website) && (
+                                  <a href={facilityDetails.website} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8 }}>Website</a>
+                                )}
+                              </div>
+                            )}
                             <div style={S.cardMeta}>
                               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                                 <StarRating rating={facility.rating} />
@@ -839,6 +861,16 @@ export default function FinderMap() {
                                   </span>
                                 )}
                               </div>
+                              <button
+                                type="button"
+                                style={S.toggleBtn(isSelected)}
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  handleMarkerClick(facility);
+                                }}
+                              >
+                                Details
+                              </button>
                               <button
                                 className="nav-btn"
                                 style={S.navBtn}

@@ -6,14 +6,14 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 export default [
   // Ignore dist and node_modules
   {
-    ignores: ['dist/**', 'node_modules/**']
+    ignores: ['dist/**', 'node_modules/**', '**/venv/**', '**/.venv/**', '.vercel/**', '.npm/**']
   },
   
   // Configuration for API files (Node.js environment)
   {
-    files: ['api/**/*.js'],
+    files: ['api/**/*.js', 'server/**/*.js', 'tests/**/*.test.js', 'vite.config.js'],
     languageOptions: {
-      ecmaVersion: 2020,
+      ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
         ...globals.node, // Node.js globals (process, etc.)
@@ -28,7 +28,7 @@ export default [
   {
     files: ['src/**/*.{js,jsx}'],
     languageOptions: {
-      ecmaVersion: 2020,
+      ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
         ...globals.browser, // Browser globals (window, document, etc.)

@@ -1,47 +1,22 @@
-// api/health.js
-export default async function handler(req, res) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Content-Type', 'application/json'); // IMPORTANT!
+export default function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Cache-Control", "no-store");
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET, OPTIONS");
+    return res.status(405).json({ error: "Method not allowed." });
   }
 
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const APP_ID = process.env.INFERMEDICA_APP_ID;
-  const APP_KEY = process.env.INFERMEDICA_APP_KEY;
-
-  try {
-    return res.json({ 
-      status: "OK", 
-      timestamp: new Date().toISOString(),
-      credentials: {
-        APP_ID: APP_ID ? "✓" : "✗",
-        APP_KEY: APP_KEY ? "✓" : "✗"
-      },
-      apiVersion: "v3",
-      environment: process.env.VERCEL_ENV || "development",
-      availableEndpoints: [
-        "GET /api/symptoms - Get symptoms (with optional search)",
-        "POST /api/diagnosis - Interactive diagnosis with questions",
-        "POST /api/triage - Get triage recommendation",
-        "GET /api/risk_factors - Get risk factors",
-        "GET /api/info - API information",
-        "GET /api/health - Health check"
-      ]
-    });
-  } catch (error) {
-    console.error('Health check error:', error);
-    return res.status(500).json({ 
-      status: "ERROR",
-      timestamp: new Date().toISOString(),
-      error: error.message
-    });
-  }
+  const ready = Boolean(process.env.GROQ_API_KEY);
+  const servicesConfigured = { chat: ready, symptomAssessment: ready };
+  return res.status(ready ? 200 : 503).json({
+    status: ready ? "ready" : "incomplete",
+    servicesConfigured,
+    timestamp: new Date().toISOString(),
+    environment: process.env.VERCEL_ENV || "development",
+    availableEndpoints: ["GET /api/health", "POST /api/chat", "POST /api/symptom-assessment", "GET /api/who"],
+  });
 }

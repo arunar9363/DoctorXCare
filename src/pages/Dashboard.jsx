@@ -5,6 +5,7 @@ import { auth, db } from "../firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { getAssessmentHistory, getSavedDiseases } from "../services/firebaseService";
+import { CARE_GUIDANCE } from "../../shared/triage.js";
 import profileImage from "/assets/profile.jpg";
 
 // Helper function to format date
@@ -906,7 +907,7 @@ function Dashboard() {
                     </div>
                   </div>
                   <span style={styles.itemBadge(getSeverityColor(item.triageLevel))}>
-                    {item.triageLevel === 'no_action' ? 'Stable' : 'Check Required'}
+                    {CARE_GUIDANCE[item.triageLevel]?.label ?? (item.triageLevel === 'no_action' ? 'Stable' : 'Check Required')}
                   </span>
                 </div>
               ))
@@ -943,7 +944,7 @@ function Dashboard() {
                 <div
                   key={item.id}
                   style={styles.listItem}
-                  onClick={() => navigate(`/diseases/${item.diseaseSlug}`)}
+                  onClick={() => navigate("/diseases/" + encodeURIComponent(item.diseaseSlug) + (item.diseaseId ? "?id=" + encodeURIComponent(item.diseaseId) : ""))}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = 'translateX(4px)';
                     e.currentTarget.style.boxShadow = isDarkMode

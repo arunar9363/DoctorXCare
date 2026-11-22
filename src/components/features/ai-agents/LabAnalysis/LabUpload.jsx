@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, Activity, FileText, AlertCircle } from 'lucide-react';
 import LabResult from './LabResult';
+import { reportUploadError, requestJson } from '../../../../services/apiClient';
 
 const LabUpload = () => {
   const [file, setFile] = useState(null);
@@ -212,52 +213,36 @@ const LabUpload = () => {
     };
   }, []);
 
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile) {
-      if (selectedFile.size > 5 * 1024 * 1024) {
-        setError("File size should be less than 5MB");
-        return;
-      }
-      setFile(selectedFile);
-      setError("");
-      setAnalysisData(null);
-    }
+  const handleFileChange = (event) => {
+    const selectedFile = event.target.files[0];
+    const problem = selectedFile ? reportUploadError(selectedFile) : "";
+    if (problem) event.target.value = "";
+    setFile(problem ? null : selectedFile || null);
+    setError(problem);
+    setAnalysisData(null);
   };
 
   const handleAnalyze = async () => {
+    if (loading) return;
     if (!file) {
-      setError("Please select a file first");
+      setError("Select a report first.");
       return;
     }
 
     setLoading(true);
     setError("");
-
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
-      const response = await fetch("/api/medical-analysis", {
-        method: "POST",
-        body: formData,
+      const formData = new FormData();
+      formData.append("file", file);
+      const data = await requestJson("/api/medical-analysis", {
+        authenticated: true, method: "POST", body: formData,
       });
-
-      const data = await response.json();
-      console.log("Backend response:", data);
-
-      if (data.error) {
-        setError("Server Error: " + data.error);
-      } else if (data.analysis) {
-        console.log("Setting analysis data:", data.analysis);
-        setAnalysisData(data.analysis);
-      } else {
-        console.log("No analysis in response");
-        setError("No analysis data received from server");
+      if (typeof data.analysis !== "string" || !data.analysis.trim()) {
+        throw new Error("No report summary was returned.");
       }
-    } catch (err) {
-      setError("Connection Failed: Make sure Python Backend is running.");
-      console.error("Fetch error:", err);
+      setAnalysisData(data.analysis);
+    } catch (error) {
+      setError(error.message || "The report could not be analyzed.");
     } finally {
       setLoading(false);
     }
@@ -674,7 +659,7 @@ const LabUpload = () => {
                 <>
                   <Upload style={styles.uploadIcon} />
                   <span style={styles.uploadText}>Click or Drag to Upload</span>
-                  <span style={styles.uploadHint}>Supports PDF, JPG, PNG (Maximum 5MB)</span>
+                  <span style={styles.uploadHint}>PDF, JPG, or PNG up to 4 MB</span>
                 </>
               )}
             </label>

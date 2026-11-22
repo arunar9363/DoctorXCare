@@ -97,7 +97,6 @@ export const useWHOApi = () => {
    * Clear cache
    */
   const clearCache = useCallback(() => {
-    whoApiService.clearCache();
   }, []);
 
   // Cleanup monitoring on unmount
