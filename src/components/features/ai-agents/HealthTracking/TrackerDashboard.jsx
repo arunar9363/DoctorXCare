@@ -1,4 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import useHealthReadings from "../../../../hooks/useHealthReadings";
+import { requestJson, reportUploadError } from "../../../../services/apiClient";
+import { addReadings, deleteReading, formatReading, localDateInput, metricUnits, updateReading } from "../../../../services/trackingService";
 import {
   Activity, Heart, Droplet, Weight, Wind, Plus, TrendingUp, CheckCircle,
   Download, RefreshCw, BarChart3, Upload, FileText, Sparkles, Info,
@@ -6,10 +10,6 @@ import {
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
-
-const API_BASE_URL = window.location.hostname === 'localhost'
-  ? 'http://localhost:8000'
-  : import.meta.env.VITE_API_URL;
 
 const TrackerDashboard = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -19,13 +19,14 @@ const TrackerDashboard = () => {
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editingIndex, setEditingIndex] = useState(null);
+  const [editingReading, setEditingReading] = useState(null);
+  const [savingReading, setSavingReading] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
   const [scanningReport, setScanningReport] = useState(false);
   const [selectedCondition, setSelectedCondition] = useState('Diabetes');
   const [uploadedFile, setUploadedFile] = useState(null);
-  const [reportDateTime, setReportDateTime] = useState(new Date().toISOString().slice(0, 16));
+  const [reportDateTime, setReportDateTime] = useState(localDateInput);
 
   // for scrolling to analysis section
   const analysisRef = React.useRef(null);
@@ -42,13 +43,10 @@ const TrackerDashboard = () => {
     }
   }, [analysis]);
 
-  const [healthData, setHealthData] = useState({
-    blood_pressure: [], blood_glucose: [], heart_rate: [], weight: [],
-    oxygen_saturation: [], tsh: [], t3: [], t4: []
-  });
+  const { uid, healthData, readingsLoading, readingsError } = useHealthReadings();
 
   const [newReading, setNewReading] = useState({
-    date: new Date().toISOString().slice(0, 16),
+    date: localDateInput(),
     systolic: '', diastolic: '', pulse: '', value: '', context: '', notes: ''
   });
 
@@ -90,221 +88,119 @@ const TrackerDashboard = () => {
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
-    if (file) {
-      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
-      if (!validTypes.includes(file.type)) {
-        alert('Please upload a PNG, JPG, or PDF file');
-        return;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        alert('File size must be less than 10MB');
-        return;
-      }
-      setUploadedFile(file);
+    const problem = file && reportUploadError(file);
+    if (problem) {
+      event.target.value = "";
+      setUploadedFile(null);
+      alert(problem);
+    } else {
+      setUploadedFile(file || null);
     }
   };
 
   const handleScanReport = async () => {
-    if (!uploadedFile) {
-      alert('Please select a file to upload');
-      return;
-    }
+    if (!uploadedFile || scanningReport) return;
     if (!reportDateTime) {
-      alert('Please select the report date and time');
+      alert("Select the date and time of the report.");
       return;
     }
 
     setScanningReport(true);
     try {
-      const formData = new FormData();
-      formData.append('file', uploadedFile);
-      formData.append('patient_id', 'demo_patient_001');
-      formData.append('condition', selectedCondition);
-      formData.append('report_date', reportDateTime);
-
-      const response = await fetch(`${API_BASE_URL}/api/health-tracking/scan-report`, {
-        method: 'POST',
-        body: formData
+      const form = new FormData();
+      form.append("file", uploadedFile);
+      form.append("condition", selectedCondition);
+      form.append("report_date", new Date(reportDateTime).toISOString());
+      const data = await requestJson("/api/health-tracking/scan-report", {
+        authenticated: true, method: "POST", body: form,
       });
-
-      const data = await response.json();
-
-      if (data.success && data.extracted_data) {
-        const newHealthData = { ...healthData };
-        // eslint-disable-next-line no-unused-vars
-        let extractedCount = 0;
-
-        ['blood_pressure', 'blood_glucose', 'heart_rate', 'weight', 'tsh', 't3', 't4'].forEach(metric => {
-          if (data.extracted_data[metric]?.length > 0) {
-            newHealthData[metric] = [
-              ...healthData[metric],
-              ...data.extracted_data[metric]
-            ].sort((a, b) => new Date(a.date) - new Date(b.date));
-            extractedCount += data.extracted_data[metric].length;
-          }
-        });
-
-        setHealthData(newHealthData);
-        setShowScanModal(false);
-        setShowSuccessModal(true);
-        setUploadedFile(null);
-      } else {
-        alert('❌ Could not extract data from the report. Please try manual entry or upload a clearer image.');
-      }
+      const extracted = Object.entries(data.extracted_data ?? {}).flatMap(([metric, readings]) =>
+        readings.map(reading => formatReading(metric, reading, reportDateTime))
+      );
+      if (!extracted.length) throw new Error("The report did not contain any usable readings.");
+      await addReadings(uid, extracted);
+      setShowScanModal(false);
+      setShowSuccessModal(true);
+      setUploadedFile(null);
     } catch (error) {
-      console.error('Report scanning error:', error);
-      alert('❌ Failed to scan report. Please try again later.');
+      alert(error.message || "The report could not be scanned. Please try again.");
     } finally {
       setScanningReport(false);
     }
   };
 
-  const handleAddReading = () => {
-    if (activeMetric === 'blood_pressure') {
-      if (!newReading.systolic || !newReading.diastolic) {
-        alert('Please enter both systolic and diastolic values');
-        return;
-      }
-    } else {
-      if (!newReading.value) {
-        alert('Please enter a value');
-        return;
-      }
+  const handleAddReading = async () => {
+    if (savingReading) return;
+    setSavingReading(true);
+    try {
+      await addReadings(uid, [formatReading(activeMetric, newReading)]);
+      setNewReading({ date: localDateInput(), systolic: "", diastolic: "", pulse: "", value: "", context: "", notes: "" });
+      setShowAddModal(false);
+    } catch (error) {
+      alert(error.message || "The reading could not be saved.");
+    } finally {
+      setSavingReading(false);
     }
-
-    const reading = {
-      date: newReading.date,
-      ...(activeMetric === 'blood_pressure' ? {
-        systolic: parseFloat(newReading.systolic),
-        diastolic: parseFloat(newReading.diastolic),
-        pulse: newReading.pulse ? parseInt(newReading.pulse) : null,
-        context: newReading.context
-      } : {
-        value: parseFloat(newReading.value),
-        unit: getUnitForMetric(activeMetric),
-        context: newReading.context
-      }),
-      notes: newReading.notes
-    };
-
-    setHealthData(prev => ({
-      ...prev,
-      [activeMetric]: [...prev[activeMetric], reading].sort((a, b) =>
-        new Date(a.date) - new Date(b.date)
-      )
-    }));
-
-    setNewReading({
-      date: new Date().toISOString().slice(0, 16),
-      systolic: '', diastolic: '', pulse: '', value: '', context: '', notes: ''
-    });
-
-    setShowAddModal(false);
   };
 
   const handleEditReading = (index) => {
     const reading = healthData[activeMetric][index];
-    setEditingIndex(index);
-    setEditReading({
-      date: reading.date,
-      systolic: reading.systolic || '',
-      diastolic: reading.diastolic || '',
-      pulse: reading.pulse || '',
-      value: reading.value || '',
-      context: reading.context || '',
-      notes: reading.notes || ''
-    });
+    if (!reading) return;
+    setEditingReading(reading);
+    setEditReading({ ...reading, date: localDateInput(reading.date) });
     setShowEditModal(true);
   };
 
-  const handleSaveEdit = () => {
-    const updatedReading = {
-      date: editReading.date,
-      ...(activeMetric === 'blood_pressure' ? {
-        systolic: parseFloat(editReading.systolic),
-        diastolic: parseFloat(editReading.diastolic),
-        pulse: editReading.pulse ? parseInt(editReading.pulse) : null,
-        context: editReading.context
-      } : {
-        value: parseFloat(editReading.value),
-        unit: getUnitForMetric(activeMetric),
-        context: editReading.context
-      }),
-      notes: editReading.notes
-    };
-
-    const updatedData = [...healthData[activeMetric]];
-    updatedData[editingIndex] = updatedReading;
-
-    setHealthData(prev => ({
-      ...prev,
-      [activeMetric]: updatedData.sort((a, b) => new Date(a.date) - new Date(b.date))
-    }));
-
-    setShowEditModal(false);
-    setEditingIndex(null);
-  };
-
-  const handleDeleteReading = (index) => {
-    if (window.confirm('Are you sure you want to delete this reading?')) {
-      const updatedData = healthData[activeMetric].filter((_, i) => i !== index);
-      setHealthData(prev => ({
-        ...prev,
-        [activeMetric]: updatedData
-      }));
+  const handleSaveEdit = async () => {
+    if (!editingReading || savingReading) return;
+    setSavingReading(true);
+    try {
+      await updateReading(uid, editingReading.id, formatReading(editingReading.metric, editReading));
+      setShowEditModal(false);
+      setEditingReading(null);
+    } catch (error) {
+      alert(error.message || "The reading could not be updated.");
+    } finally {
+      setSavingReading(false);
     }
   };
 
-  const getUnitForMetric = (metric) => {
-    const units = {
-      blood_glucose: 'mg/dL', heart_rate: 'bpm', weight: 'kg',
-      oxygen_saturation: '%', tsh: 'mIU/L', t3: 'ng/dL', t4: 'ng/dL'
-    };
-    return units[metric] || '';
+  const handleDeleteReading = async (index) => {
+    const reading = healthData[activeMetric][index];
+    if (!reading || savingReading || !window.confirm("Delete this reading?")) return;
+    setSavingReading(true);
+    try {
+      await deleteReading(uid, reading.id);
+    } catch (error) {
+      alert(error.message || "The reading could not be deleted.");
+    } finally {
+      setSavingReading(false);
+    }
   };
 
   const handleAnalyzeData = async () => {
-    const totalReadings = Object.values(healthData).reduce((sum, arr) => sum + arr.length, 0);
-
-    if (totalReadings === 0) {
-      alert('⚠️ No data available for analysis. Please scan a report or add readings manually first.');
+    if (loading) return;
+    if (!Object.values(healthData).some(readings => readings.length)) {
+      alert("Scan a report or add a reading before requesting analysis.");
       return;
     }
 
     setLoading(true);
+    setAnalysis(null);
     try {
-      const trackingData = {
-        patient_id: 'demo_patient_001',
-        condition: selectedCondition,
-        blood_pressure: healthData.blood_pressure,
-        blood_glucose: healthData.blood_glucose,
-        heart_rate: healthData.heart_rate,
-        weight: healthData.weight,
-        oxygen_saturation: healthData.oxygen_saturation,
-        tsh: healthData.tsh,
-        t3: healthData.t3,
-        t4: healthData.t4,
-        symptoms: '',
-        lifestyle_changes: ''
-      };
-
-      const response = await fetch(`${API_BASE_URL}/api/health-tracking/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(trackingData)
+      const recent = Object.fromEntries(Object.entries(healthData).map(([metric, readings]) =>
+        [metric, readings.slice(-100)]
+      ));
+      const data = await requestJson("/api/health-tracking/analyze", {
+        authenticated: true,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...recent, condition: selectedCondition }),
       });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setAnalysis(data.analysis);
-        // setShowAnalysisModal(true);
-      } else {
-        alert('❌ Analysis failed. Please try again.');
-      }
+      if (typeof data.analysis !== "string" || !data.analysis.trim()) throw new Error("No tracking summary was returned.");
+      setAnalysis(data.analysis);
     } catch (error) {
-      console.error('Analysis error:', error);
-      alert('❌ Failed to analyze data. Please try again later.');
+      alert(error.message || "The readings could not be analyzed.");
     } finally {
       setLoading(false);
     }
@@ -563,9 +459,11 @@ const TrackerDashboard = () => {
         value: reading.systolic
       }));
     }
-    return data.map(reading => ({
+    const unit = data.at(-1)?.unit;
+    return data.filter(reading => reading.unit === unit).map(reading => ({
       date: new Date(reading.date).toLocaleDateString(),
-      value: reading.value
+      value: reading.value,
+      unit: reading.unit,
     }));
   };
 
@@ -792,6 +690,11 @@ const TrackerDashboard = () => {
       </div>
 
       {/* Chart or Empty State */}
+      <div style={{ marginBottom: 16 }}>
+        <Link to={"/health-tracking/charts?metric=" + activeMetric}>View trends</Link>
+        {readingsLoading && <p role="status">Loading saved readings...</p>}
+        {readingsError && <p role="alert">{readingsError}</p>}
+      </div>
       {healthData[activeMetric]?.length > 0 ? (
         <div style={{
           maxWidth: '1400px', margin: '0 auto 32px',
@@ -832,10 +735,12 @@ const TrackerDashboard = () => {
                   <Line type="monotone" dataKey="diastolic" stroke="#3b82f6" strokeWidth={2} name="Diastolic" />
                 </>
               ) : (
-                <Line type="monotone" dataKey="value" stroke={metricCards.find(m => m.id === activeMetric)?.color} strokeWidth={2} />
+                <Line type="monotone" dataKey="value" unit={chartData[0]?.unit} stroke={metricCards.find(m => m.id === activeMetric)?.color} strokeWidth={2} />
               )}
             </LineChart>
           </ResponsiveContainer>
+
+          {chartData.length < healthData[activeMetric].length && <p>Chart shows readings in {chartData[0]?.unit}.</p>}
 
           {/* Data Table */}
           <div style={{ marginTop: '24px' }}>
@@ -864,7 +769,7 @@ const TrackerDashboard = () => {
                 </thead>
                 <tbody>
                   {healthData[activeMetric].map((reading, index) => (
-                    <tr key={index} style={{ borderBottom: isDarkMode ? '1px solid #334155' : '1px solid #f3f4f6' }}>
+                    <tr key={reading.id} style={{ borderBottom: isDarkMode ? '1px solid #334155' : '1px solid #f3f4f6' }}>
                       <td style={{ padding: '12px', color: isDarkMode ? '#d1d5db' : '#111827' }}>
                         {new Date(reading.date).toLocaleString()}
                       </td>
@@ -1120,7 +1025,7 @@ const TrackerDashboard = () => {
                     Click to upload or drag and drop
                   </p>
                   <p style={{ fontSize: '0.875rem', color: isDarkMode ? '#9ca3af' : '#6b7280' }}>
-                    PNG, JPG, or PDF (Max 10MB)
+                    PNG, JPG, or PDF (up to 4 MB)
                   </p>
                 </div>
               )}
@@ -1206,7 +1111,7 @@ const TrackerDashboard = () => {
             ) : (
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: isDarkMode ? '#f3f4f6' : '#111827' }}>
-                  Value ({getUnitForMetric(activeMetric)})*
+                  Value ({metricUnits[activeMetric]})*
                 </label>
                 <input
                   type="number"
@@ -1219,7 +1124,7 @@ const TrackerDashboard = () => {
               </div>
             )}
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button onClick={handleAddReading} style={{ ...styles.button(true), flex: 1 }}>
+              <button disabled={savingReading} onClick={handleAddReading} style={{ ...styles.button(true), flex: 1 }}>
                 <CheckCircle size={20} />
                 Save Reading
               </button>
@@ -1277,7 +1182,7 @@ const TrackerDashboard = () => {
             ) : (
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: isDarkMode ? '#f3f4f6' : '#111827' }}>
-                  Value ({getUnitForMetric(activeMetric)})*
+                  Value ({editingReading?.unit || metricUnits[activeMetric]})*
                 </label>
                 <input
                   type="number"
@@ -1289,7 +1194,7 @@ const TrackerDashboard = () => {
               </div>
             )}
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button onClick={handleSaveEdit} style={{ ...styles.button(true), flex: 1 }}>
+              <button disabled={savingReading} onClick={handleSaveEdit} style={{ ...styles.button(true), flex: 1 }}>
                 <Save size={20} />
                 Save Changes
               </button>

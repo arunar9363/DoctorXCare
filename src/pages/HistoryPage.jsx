@@ -25,6 +25,7 @@ import {
 } from '../services/firebaseService';
 import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { CARE_GUIDANCE, SEX_LABELS } from '../../shared/triage.js';
 
 const HistoryPage = () => {
   const navigate = useNavigate();
@@ -164,13 +165,10 @@ const HistoryPage = () => {
   };
 
   const getTriageLabel = (level) => {
+    if (Object.hasOwn(CARE_GUIDANCE, level)) return CARE_GUIDANCE[level].label;
     const labels = {
       'emergency': 'Emergency',
-      'emergency_ambulance': 'Call 102',
       'consultation_6': 'See Doctor (6hrs)',
-      'consultation_24': 'See Doctor (24hrs)',
-      'consultation': 'Doctor Visit',
-      'self_care': 'Self Care',
       'no_action': 'No Action'
     };
     return labels[level] || level;
@@ -885,7 +883,8 @@ const HistoryPage = () => {
                             {formatDate(assessment.completedAt)}
                           </div>
                           <div style={styles.cardMeta}>
-                            Age: {assessment.age} | {assessment.sex === 'male' ? 'Male' : 'Female'}
+                            {assessment.age == null ? 'Age not provided' : 'Age ' + assessment.age}
+                            {' · '}{SEX_LABELS[assessment.sex] ?? 'Sex not provided'}
                           </div>
                         </div>
                         <button
@@ -940,13 +939,30 @@ const HistoryPage = () => {
                           <div style={styles.chipLabel}>Possible Conditions:</div>
                           {assessment.conditions.slice(0, 3).map((condition, idx) => (
                             <div key={idx} style={styles.conditionItem}>
-                              <span>{condition.name}</span>
-                              <span style={styles.probabilityBadge}>
-                                {condition.probability}%
+                              <span>
+                                {condition.name}
+                                {condition.reason && <small style={{ display: 'block' }}>{condition.reason}</small>}
                               </span>
+                              {Number.isFinite(condition.probability) && (
+                                <span style={styles.probabilityBadge}>{condition.probability}%</span>
+                              )}
                             </div>
                           ))}
                         </div>
+                      )}
+                      {assessment.summary && (
+                        <details style={{ marginTop: '12px' }}>
+                          <summary>View assessment report</summary>
+                          <p style={{ marginTop: '8px' }}>{assessment.summary}</p>
+                          {assessment.source === 'groq' && <p>{assessment.questionCount} follow-up questions answered</p>}
+                          {assessment.triageDescription && <p>{assessment.triageDescription}</p>}
+                          {assessment.recommendations?.map((recommendation, index) => <p key={index}>{recommendation}</p>)}
+                          {assessment.findings?.length > 0 && (
+                            <ul>{assessment.findings.map((finding, index) => <li key={index}>{finding}</li>)}</ul>
+                          )}
+                          {assessment.limitations && <p>{assessment.limitations}</p>}
+                          {assessment.source === 'groq' && <small>A healthcare professional can confirm the cause.</small>}
+                        </details>
                       )}
                     </div>
                   ))}
@@ -987,7 +1003,7 @@ const HistoryPage = () => {
                     <div
                       key={disease.id}
                       style={styles.card}
-                      onClick={() => navigate(`/diseases/${disease.diseaseSlug}`)}
+                      onClick={() => navigate("/diseases/" + encodeURIComponent(disease.diseaseSlug) + (disease.diseaseId ? "?id=" + encodeURIComponent(disease.diseaseId) : ""))}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.transform = 'translateY(-8px)';
                         e.currentTarget.style.boxShadow = isDarkMode

@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from "@react-google-maps/api";
+import { requestJson } from "../../../../services/apiClient";
 
 // ─── IMPORTANT: Declare libraries OUTSIDE component to avoid re-render loops ──
 const GOOGLE_MAPS_LIBRARIES = ["places"];
@@ -20,7 +21,7 @@ const FILTER_OPTIONS = [
     id: "emergency",
     label: "Emergency",
     icon: "🚨",
-    keyword: "emergency",
+    keyword: "emergency department",
     color: "#ef4444",
     bg: "rgba(239,68,68,0.12)",
   },
@@ -119,7 +120,7 @@ function getTravelTime(km) {
 
 // ─── Distance + Time Badge component ─────────────────────────────────────────
 function DistanceBadge({ userLocation, facility, isDarkMode, compact = false }) {
-  if (!userLocation || !facility?.geometry?.lat) return null;
+  if (!userLocation || !Number.isFinite(facility?.geometry?.lat) || !Number.isFinite(facility?.geometry?.lng)) return null;
   const km = haversineKm(
     userLocation.lat, userLocation.lng,
     facility.geometry.lat, facility.geometry.lng
@@ -292,33 +293,36 @@ export default function FinderMap() {
   }, []);
 
   // ── Fetch facilities from backend ─────────────────────────────────────────
+  const activeSearch = useRef(null);
   const fetchFacilities = useCallback(async (facilityType) => {
     if (!userLocation) return;
+    activeSearch.current?.abort();
+    const controller = new AbortController();
+    activeSearch.current = controller;
     setFacilitiesLoading(true);
     setApiError("");
     setSelectedFacility(null);
 
     try {
-      const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const url = `${BASE}/api/v1/nearby-finder?latitude=${userLocation.lat}&longitude=${userLocation.lng}&facility_type=${facilityType}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || `Server error: ${res.status}`);
-      }
-      const data = await res.json();
-      setFacilities(data.facilities || []);
+      const query = new URLSearchParams({ latitude: userLocation.lat, longitude: userLocation.lng, facility_type: facilityType });
+      const data = await requestJson(`/api/v1/nearby-finder?${query}`, { signal: controller.signal });
+      if (!controller.signal.aborted) setFacilities(data.facilities || []);
     } catch (err) {
+      if (controller.signal.aborted) return;
       setApiError(err.message || "Failed to fetch nearby facilities.");
       setFacilities([]);
     } finally {
-      setFacilitiesLoading(false);
+      if (activeSearch.current === controller && !controller.signal.aborted) {
+        activeSearch.current = null;
+        setFacilitiesLoading(false);
+      }
     }
   }, [userLocation]);
 
   // Auto-fetch when location ready or filter changes
   useEffect(() => {
     if (userLocation) fetchFacilities(activeFilter);
+    return () => activeSearch.current?.abort();
   }, [userLocation, activeFilter, fetchFacilities]);
 
   // ── Map callbacks ─────────────────────────────────────────────────────────
@@ -341,6 +345,8 @@ export default function FinderMap() {
 
   // ── Active filter config ──────────────────────────────────────────────────
   const activeFilterConfig = FILTER_OPTIONS.find(f => f.id === activeFilter) || FILTER_OPTIONS[0];
+  const searchLocation = userLocation ? `${userLocation.lat},${userLocation.lng}` : "me";
+  const mapsQuery = new URLSearchParams({ api: "1", query: `${activeFilterConfig.keyword} near ${searchLocation}` });
 
   // ─────────────────────────────────────────────────────────────────────────
   // STYLES — now light/dark aware, matching Services.jsx
@@ -791,7 +797,7 @@ export default function FinderMap() {
               <span style={{ fontSize: "1.3rem" }}>🔌</span>
               <div>
                 <div style={{ color: "#fca5a5", fontWeight: 700, marginBottom: "4px" }}>
-                  API Error
+                  Nearby search unavailable
                 </div>
                 <div style={S.errorText}>{apiError}</div>
               </div>
@@ -805,10 +811,16 @@ export default function FinderMap() {
                   Google Maps Failed to Load
                 </div>
                 <div style={S.errorText}>
-                  Check that your VITE_Maps_API_KEY is valid and has Maps JavaScript API enabled.
+                  The map is unavailable right now.
                 </div>
               </div>
             </div>
+          )}
+          {(locationError || apiError || mapsLoadError) && (
+            <a className="btn btn-outline-primary" style={{ marginBottom: 16 }}
+              href={`https://www.google.com/maps/search/?${mapsQuery}`} target="_blank" rel="noopener noreferrer">
+              Search nearby in Google Maps
+            </a>
           )}
 
           {/* ── Filter Buttons ────────────────────────────────────────────── */}
@@ -951,7 +963,7 @@ export default function FinderMap() {
 
                       {/* Facility markers */}
                       {facilities.map((facility) => (
-                        facility.geometry?.lat && facility.geometry?.lng && (
+                        Number.isFinite(facility.geometry?.lat) && Number.isFinite(facility.geometry?.lng) && (
                           <Marker
                             key={facility.id}
                             position={{ lat: facility.geometry.lat, lng: facility.geometry.lng }}

@@ -953,7 +953,7 @@ function Navbar() {
 
       <>
         <LoginModal show={showLogin} onClose={() => setShowLogin(false)} onShowToast={showToast} />
-        <ProfilePage show={showProfile} onClose={() => setShowProfile(false)} onShowToast={showToast} />
+        {showProfile && <ProfilePage show onClose={() => setShowProfile(false)} onShowToast={showToast} />}
         <EmergencyModal show={showEmergency} onClose={() => setShowEmergency(false)} isDark={isDark} />
         <SimpleToast message={toast.message} type={toast.type} show={toast.show} onClose={hideToast} />
         <style>{`

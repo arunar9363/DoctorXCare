@@ -5,6 +5,7 @@ import { auth, db } from "../firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { getAssessmentHistory, getSavedDiseases } from "../services/firebaseService";
+import { CARE_GUIDANCE } from "../../shared/triage.js";
 import profileImage from "/assets/profile.jpg";
 
 // Helper function to format date
@@ -717,6 +718,7 @@ function Dashboard() {
   const getSeverityColor = (level) => {
     if (['emergency', 'emergency_ambulance', 'critical'].includes(level)) return '#ef4444';
     if (['consultation_6', 'consultation_24', 'moderate'].includes(level)) return '#f59e0b';
+    if (level === 'consultation') return '#3b82f6';
     return '#10b981';
   };
 
@@ -972,11 +974,11 @@ function Dashboard() {
                     <div style={styles.itemIcon}>📋</div>
                     <div style={styles.itemContent}>
                       <div style={styles.itemTitle}>{item.patientName || 'Personal Assessment'}</div>
-                      <div style={styles.itemSub}>{formatDate(item.completedAt)} · {item.symptoms?.length || 0} symptoms reported</div>
+                      <div style={styles.itemSub}>{formatDate(item.completedAt)}{Number.isInteger(item.questionCount) ? ` · ${item.questionCount} follow-up answers` : ''}</div>
                     </div>
                   </div>
                   <span style={styles.itemBadge(getSeverityColor(item.triageLevel))}>
-                    {item.triageLevel === 'no_action' ? 'All Clear' : 'Follow-up Advised'}
+                    {CARE_GUIDANCE[item.triageLevel]?.label || 'Saved care recommendation'}
                   </span>
                 </div>
               ))

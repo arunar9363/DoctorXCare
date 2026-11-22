@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search,
   Eye,
@@ -17,6 +17,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useWHONews, useWHOOutbreaks } from '../../hooks/useWHOApi';
+import { diseaseDetailsPath, loadDiseaseCatalog, normalizeDiseaseTitle } from '../../services/diseaseLibrary';
 
 // Helper hook for responsive design using media queries in JS
 const useMediaQuery = (query) => {
@@ -35,7 +36,9 @@ const useMediaQuery = (query) => {
 
 const DiseaseSearchPage = () => {
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchParams] = useSearchParams();
+  const linkedQuery = searchParams.get('q') ?? '';
+  const [searchQuery, setSearchQuery] = useState(linkedQuery);
   const [keywordInput, setKeywordInput] = useState('');
   const [selectedKeywords, setSelectedKeywords] = useState([]);
   const [diseases, setDiseases] = useState([]);
@@ -99,34 +102,27 @@ const DiseaseSearchPage = () => {
   const { updates: whoUpdates = [], loading: whoLoading, error: whoError, refresh: refreshWHOUpdates } = useWHONews({ limit: 8, autoRefresh: true, refreshInterval: 300000, includeOutbreaks: true, includeEmergencies: true }) || {};
   const { newOutbreaks = [], hasNewOutbreaks, clearNewOutbreaks } = useWHOOutbreaks({ limit: 5, enableMonitoring: true, monitoringInterval: 600000 }) || {};
 
-  const createSlug = useCallback((name) => {
-    return name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
-  }, []);
+  useEffect(() => {
+    setSearchQuery(linkedQuery);
+  }, [linkedQuery]);
 
   // Fetch disease data
   useEffect(() => {
+    const controller = new AbortController();
     const loadDiseases = async () => {
       try {
         setLoading(true);
         setError(null);
-        let diseasesData = [];
-        try {
-          const response = await fetch('/data/diseases.json');
-          if (response.ok) diseasesData = await response.json();
-        // eslint-disable-next-line no-unused-vars
-        } catch (fetchError) {
-          diseasesData = [];
-        }
-        setDiseases(diseasesData);
-        setFilteredDiseases(diseasesData);
-      // eslint-disable-next-line no-unused-vars
-      } catch (e) {
-        setError('Failed to load diseases data');
+        const diseasesData = await loadDiseaseCatalog(controller.signal);
+        if (!controller.signal.aborted) setDiseases(diseasesData);
+      } catch {
+        if (!controller.signal.aborted) setError('Failed to load diseases data');
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
     loadDiseases();
+    return () => controller.abort();
   }, []);
 
   // Enhanced search logic
@@ -137,9 +133,12 @@ const DiseaseSearchPage = () => {
         return;
       }
 
-      const query = searchQuery.toLowerCase();
+      const query = searchQuery.trim().toLowerCase();
+      const titleQuery = normalizeDiseaseTitle(query);
+      const matchesName = disease => disease.name.toLowerCase().includes(query) ||
+        Boolean(titleQuery && normalizeDiseaseTitle(disease.name).includes(titleQuery));
       const localFiltered = diseases.filter(disease => {
-        const nameMatch = disease.name.toLowerCase().includes(query);
+        const nameMatch = matchesName(disease);
         const symptomMatch = disease.symptoms?.some(symptom =>
           symptom.toLowerCase().includes(query)
         );
@@ -159,8 +158,8 @@ const DiseaseSearchPage = () => {
       });
 
       localFiltered.sort((a, b) => {
-        const aNameMatch = a.name.toLowerCase().includes(query);
-        const bNameMatch = b.name.toLowerCase().includes(query);
+        const aNameMatch = matchesName(a);
+        const bNameMatch = matchesName(b);
         const aSymptomMatch = a.symptoms?.some(symptom => symptom.toLowerCase().includes(query));
         const bSymptomMatch = b.symptoms?.some(symptom => symptom.toLowerCase().includes(query));
 
@@ -221,7 +220,7 @@ const DiseaseSearchPage = () => {
   };
 
   const handleViewDetails = (disease) => {
-    navigate(`/diseases/${createSlug(disease.name)}?id=${disease.id}`);
+    navigate(diseaseDetailsPath(disease));
   };
 
   const handleUpdateClick = (update) => { if (update?.url) window.open(update.url, '_blank', 'noopener,noreferrer'); };

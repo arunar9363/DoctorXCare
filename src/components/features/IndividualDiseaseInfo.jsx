@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { getSavedDiseaseById, removeSavedDisease, saveDiseaseToFirebase } from '../../services/firebaseService';
+import { diseaseSlug, loadDiseaseCatalog } from '../../services/diseaseLibrary';
 import {
   ArrowLeft,
   AlertCircle,
@@ -31,11 +34,17 @@ const useMediaQuery = (query) => {
 };
 
 const IndividualDiseasesInfo = () => {
+  const { diseaseName } = useParams();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const requestedId = searchParams.get("id");
   const [disease, setDisease] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
+  const [savedEntry, setSavedEntry] = useState(null);
+  const [bookmarkLoading, setBookmarkLoading] = useState(false);
+  const isSaved = Boolean(savedEntry);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
   const [hoverStates, setHoverStates] = useState({});
@@ -55,83 +64,46 @@ const IndividualDiseasesInfo = () => {
   }, []);
 
   useEffect(() => {
-    const loadDiseaseData = async () => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    setDisease(null);
+    setSavedEntry(null);
+
+    async function loadDisease() {
       try {
-        setLoading(true);
-        setError(null);
-
-        // Get disease ID from URL parameters - supports both query params and route params
-        const urlParams = new URLSearchParams(window.location.search);
-        let diseaseId = urlParams.get('id');
-
-        // Also check for disease ID in the path (for routes like /diseases/:id)
-        if (!diseaseId) {
-          const pathParts = window.location.pathname.split('/');
-          const diseasesIndex = pathParts.indexOf('diseases');
-          if (diseasesIndex !== -1 && pathParts[diseasesIndex + 1]) {
-            diseaseId = pathParts[diseasesIndex + 1];
-          }
-        }
-
-        // Fetch the diseases data from the JSON file
-        const response = await fetch('/data/diseases.json');
-        if (!response.ok) {
-          throw new Error('Failed to load diseases data');
-        }
-
-        const diseasesData = await response.json();
-
-        // Find the specific disease by ID or by slug
-        let foundDisease = diseasesData.find(d => d.id === diseaseId);
-
-        // If not found by ID, try to find by slug (converted from name)
-        if (!foundDisease && diseaseId) {
-          // Convert slug back to name comparison
-          foundDisease = diseasesData.find(d => {
-            const diseaseSlug = d.name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
-            return diseaseSlug === diseaseId;
-          });
-        }
-
-        if (foundDisease) {
-          setDisease(foundDisease);
-        } else if (diseaseId) {
-          // If ID was provided but not found
-          setError(`Disease with ID "${diseaseId}" not found`);
-          setDisease(diseasesData[0]); // Fallback to first disease
-        } else {
-          // No ID provided, show first disease
-          setDisease(diseasesData[0]);
-        }
-      } catch (error) {
-        console.error('Error loading disease data:', error);
-        setError('Failed to load disease information. Please try again.');
-
-        // Set a default disease if loading fails
-        setDisease({
-          id: "501",
-          name: "Fever (Pyrexia)",
-          description: "Fever is a temporary increase in body temperature, typically in response to an illness or infection.",
-          symptoms: ["Elevated body temperature >100.4°F (38°C)", "Chills, headache, fatigue, body aches"],
-          prevention: ["Prevent underlying infections through frequent handwashing"],
-          treatment: ["Get plenty of rest to allow the body to recover"],
-          category: "Common Ailment",
-          image: "https://images.unsplash.com/photo-1584515933487-779824d29309?w=400&h=300&fit=crop",
-          severity: "Mild to Moderate",
-          duration: "1-3 days",
-          contagious: true,
-          when_to_consult_a_doctor: "Consult if fever >103°F (39.4°C), lasts >3 days.",
-          common_tests_advised: "CBC, Urine Routine, Malaria Antigen.",
-          symptoms_that_should_not_be_ignored: "Stiff neck, confusion, seizures, difficulty breathing.",
-          dr_note: "Minor point: 37.5°C is usually considered low-grade fever."
-        });
+        const data = await loadDiseaseCatalog(controller.signal);
+        const match = data.find(item => String(item.id) === (requestedId ?? diseaseName));
+        const matchingSlugs = !requestedId && !match ? data.filter(item => diseaseSlug(item.name) === diseaseName) : [];
+        const found = match || (matchingSlugs.length === 1 ? matchingSlugs[0] : null);
+        if (controller.signal.aborted) return;
+        setDisease(found);
+        if (!found) setError("This disease record could not be found.");
+      } catch {
+        if (!controller.signal.aborted) setError("Disease information could not be loaded. Please try again.");
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
-    };
+    }
 
-    loadDiseaseData();
-  }, []);
+    loadDisease();
+    return () => controller.abort();
+  }, [requestedId, diseaseName]);
+
+  useEffect(() => {
+    if (!disease) return;
+    let active = true;
+    setBookmarkLoading(true);
+    const keys = [...new Set([String(disease.id), diseaseSlug(disease.name), disease.name.toLowerCase().replace(/\s+/g, "-")])];
+    Promise.all(keys.filter(key => key && !key.includes("/")).map(getSavedDiseaseById)).then(records => {
+      if (active) setSavedEntry(records.find(record => record && (record.diseaseId ? record.diseaseId === String(disease.id) : record.diseaseName === disease.name)) ?? null);
+    }).catch(() => {
+      if (active) setSavedEntry(null);
+    }).finally(() => {
+      if (active) setBookmarkLoading(false);
+    });
+    return () => { active = false; };
+  }, [disease]);
 
   const showToast = (message, type) => {
     setToast({ show: true, message, type });
@@ -158,13 +130,24 @@ const IndividualDiseasesInfo = () => {
     return `/${imagePath}`;
   };
 
-  const handleSaveDisease = () => {
+  const handleSaveDisease = async () => {
+    if (isSaving || bookmarkLoading || !disease) return;
     setIsSaving(true);
-    setTimeout(() => {
-      setIsSaved(!isSaved);
-      showToast(isSaved ? 'Disease removed from saved list' : 'Disease saved successfully!', isSaved ? 'info' : 'success');
+    try {
+      if (savedEntry) {
+        await removeSavedDisease(savedEntry.id);
+        setSavedEntry(null);
+        showToast("Disease removed from saved list.", "info");
+      } else {
+        const result = await saveDiseaseToFirebase({ ...disease, slug: diseaseSlug(disease.name), bookmarkId: String(disease.id) });
+        setSavedEntry({ id: result.diseaseId });
+        showToast("Disease saved.", "success");
+      }
+    } catch {
+      showToast("The bookmark could not be updated. Please try again.", "error");
+    } finally {
       setIsSaving(false);
-    }, 500);
+    }
   };
 
   const themes = {
@@ -454,9 +437,9 @@ const IndividualDiseasesInfo = () => {
         <div style={s.max}>
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
             <AlertCircle size={48} style={{ color: t.colorDanger, marginBottom: '16px' }} />
-            <h2>Disease Not Found</h2>
-            <p>The requested disease information could not be found.</p>
-            <button style={s.backBtn(false)} onClick={() => window.history.back()}>
+            <h2>Disease information unavailable</h2>
+            <p>{error}</p>
+            <button style={s.backBtn(false)} onClick={() => navigate('/diseases')}>
               <ArrowLeft size={16} />
               <span>Go Back</span>
             </button>
@@ -480,13 +463,6 @@ const IndividualDiseasesInfo = () => {
       )}
 
       <div style={s.max}>
-        {error && (
-          <div style={s.errorBanner}>
-            <AlertCircle size={20} />
-            <span>{error}</span>
-          </div>
-        )}
-
         <header style={s.header}>
           <div style={s.headerTop}>
             <button style={s.backBtn(hoverStates.back)}
@@ -500,7 +476,7 @@ const IndividualDiseasesInfo = () => {
             <button style={s.saveBtn(hoverStates.save)}
               onMouseEnter={() => handleHover('save', true)}
               onMouseLeave={() => handleHover('save', false)}
-              onClick={handleSaveDisease} disabled={isSaving}>
+              onClick={handleSaveDisease} disabled={isSaving || bookmarkLoading}>
               {isSaving ? (
                 <>
                   <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />

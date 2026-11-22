@@ -1,14 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { requestJson } from "../services/apiClient";
+import { CARE_GUIDANCE } from "../../shared/triage.js";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const API_BASE = import.meta.env.VITE_API_URL || "https://doctorx-backend-t1ic.onrender.com";
-
-const EMERGENCY_CONFIG = {
-  1: { label: "Non-Urgent", color: "#22c55e", bg: "rgba(34,197,94,0.1)", icon: "🟢", border: "rgba(34,197,94,0.25)" },
-  2: { label: "Low", color: "#84cc16", bg: "rgba(132,204,22,0.1)", icon: "🟡", border: "rgba(132,204,22,0.25)" },
-  3: { label: "Moderate", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", icon: "🟠", border: "rgba(245,158,11,0.25)" },
-  4: { label: "High", color: "#ef4444", bg: "rgba(239,68,68,0.1)", icon: "🔴", border: "rgba(239,68,68,0.25)" },
-  5: { label: "Critical", color: "#dc2626", bg: "rgba(220,38,38,0.12)", icon: "🚨", border: "rgba(220,38,38,0.3)" },
+const CARE_STYLES = {
+  self_care: { color: "#15803d", bg: "rgba(34,197,94,0.1)", icon: "🟢", border: "rgba(34,197,94,0.25)" },
+  consultation: { color: "#087589", bg: "rgba(13,157,184,0.1)", icon: "🔵", border: "rgba(13,157,184,0.25)" },
+  consultation_24: { color: "#b45309", bg: "rgba(245,158,11,0.1)", icon: "🟠", border: "rgba(245,158,11,0.25)" },
+  emergency_ambulance: { color: "#dc2626", bg: "rgba(220,38,38,0.12)", icon: "🚨", border: "rgba(220,38,38,0.3)" },
 };
 
 const TYPING_SPEED = 14;
@@ -84,24 +82,23 @@ function ThinkingDots() {
 
 // ─── AssessmentCard ───────────────────────────────────────────────────────────
 function AssessmentCard({ data, isDark, c, onReset }) {
-  const level = data.emergency_level || 3;
-  const cfg = EMERGENCY_CONFIG[level];
+  const cfg = CARE_STYLES[data.triage_level] || CARE_STYLES.consultation;
+  const care = CARE_GUIDANCE[data.triage_level] || CARE_GUIDANCE.consultation;
   return (
     <div style={{ border: "1px solid rgba(13,157,184,0.2)", borderRadius: 16, padding: 18, marginTop: 10, animation: "slideUp 0.4s ease", background: isDark ? "rgba(15,23,42,0.95)" : "#ffffff" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 4 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: c.title }}>🩺 Clinical Assessment</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: c.title }}>Assessment summary</span>
         <span style={{ fontSize: 10, color: c.muted }}>AI-generated · Confirm with physician</span>
       </div>
       <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "11px 14px", borderRadius: 11, border: `1px solid ${cfg.border}`, background: cfg.bg, marginBottom: 12 }}>
         <span style={{ fontSize: 22 }}>{cfg.icon}</span>
         <div>
-          <div style={{ fontWeight: 700, color: cfg.color, fontSize: 13 }}>Level {level} — {cfg.label}</div>
-          <div style={{ color: c.muted, fontSize: 11, marginTop: 2 }}>Emergency classification</div>
+          <div style={{ fontWeight: 700, color: cfg.color, fontSize: 13 }}>{care.label}</div>
         </div>
       </div>
       {data.summary && <p style={{ color: c.muted, fontSize: 12, lineHeight: 1.7, margin: "0 0 12px" }}>{data.summary}</p>}
       {data.possible_conditions?.length > 0 && (
-        <ASection title="🔬 Possible Conditions" c={c}>
+        <ASection title="Possible causes to discuss" c={c}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {data.possible_conditions.map((cond, i) => (
               <span key={i} style={{ border: "1px solid", borderRadius: 999, padding: "2px 9px", fontSize: 10, background: i === 0 ? "rgba(13,157,184,0.12)" : isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: i === 0 ? "#0d9db8" : c.muted, borderColor: i === 0 ? "rgba(13,157,184,0.3)" : c.border }}>{cond}</span>
@@ -114,25 +111,6 @@ function AssessmentCard({ data, isDark, c, onReset }) {
           <ul style={{ margin: "0 0 0 13px", padding: 0 }}>
             {data.immediate_actions.map((a, i) => <li key={i} style={{ fontSize: 11, lineHeight: 1.7, marginBottom: 2, color: c.muted }}>{a}</li>)}
           </ul>
-        </ASection>
-      )}
-      {data.lifestyle_advice?.length > 0 && (
-        <ASection title="🌿 Lifestyle Advice" c={c}>
-          <ul style={{ margin: "0 0 0 13px", padding: 0 }}>
-            {data.lifestyle_advice.map((a, i) => <li key={i} style={{ fontSize: 11, lineHeight: 1.7, marginBottom: 2, color: c.muted }}>{a}</li>)}
-          </ul>
-        </ASection>
-      )}
-      {data.red_flags?.length > 0 && (
-        <ASection title="⚠️ Red Flags" c={c}>
-          <ul style={{ margin: "0 0 0 13px", padding: 0 }}>
-            {data.red_flags.map((f, i) => <li key={i} style={{ fontSize: 11, lineHeight: 1.7, marginBottom: 2, color: "#fca5a5" }}>{f}</li>)}
-          </ul>
-        </ASection>
-      )}
-      {data.specialist_referral && data.specialist_referral !== "None" && (
-        <ASection title="🏥 Recommended Specialist" c={c}>
-          <span style={{ border: "1px solid rgba(13,157,184,0.3)", borderRadius: 999, padding: "2px 9px", fontSize: 10, background: "rgba(13,157,184,0.12)", color: "#0d9db8" }}>{data.specialist_referral}</span>
         </ASection>
       )}
       <p style={{ marginTop: 12, padding: "8px 11px", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 8, color: "#fbbf24", fontSize: 10 }}>
@@ -190,6 +168,7 @@ export default function AIDoctorPage() {
   const [newMsgIdx, setNewMsgIdx] = useState(null);
   const [micSupported] = useState(() => !!getSR());
   const [interimText, setInterimText] = useState("");
+  const [draft, setDraft] = useState("");
   const [micState, setMicState] = useState("off");
   const [isHovered, setIsHovered] = useState(false);
   const [navHeight, setNavHeight] = useState(64);
@@ -202,8 +181,8 @@ export default function AIDoctorPage() {
   const isSpeakingRef = useRef(false);
   const isLoadingRef = useRef(false);
   const isMutedRef = useRef(false);
+  const activeRequest = useRef(null);
   const historyRef = useRef([]);
-  const turnRef = useRef(0);
   const phaseRef = useRef("idle");
   const bottomRef = useRef(null);
 
@@ -333,27 +312,30 @@ export default function AIDoctorPage() {
 
   // handleVoiceInput: send user speech to API
   const handleVoiceInput = useCallback(async (msg) => {
-    if (!msg) return;
-    addMessage("patient", msg);
+    const answer = msg.trim();
+    if (!answer || activeRequest.current || phaseRef.current !== "consulting" || !historyRef.current.length) return;
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    addMessage("patient", answer);
     setLoading(true); isLoadingRef.current = true;
     setMicState("processing"); stopTTS();
 
     try {
-      const res = await fetch(`${API_BASE}/api/ai-doctor/respond`, {
+      const data = await requestJson("/api/ai-doctor", {
+        authenticated: true,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          patient_message: msg,
+          action: "respond",
+          patient_message: answer,
           history: historyRef.current,
-          turn: turnRef.current,
         }),
+        signal: controller.signal,
       });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.detail || "Response failed");
-
+      if (controller.signal.aborted) return;
       historyRef.current = data.history;
-      turnRef.current = data.turn;
       setTurnDisplay(data.turn);
+      setDraft("");
 
       if (data.assessment_ready) {
         const summary = data.response?.summary || "Your assessment is ready. Please review the report below.";
@@ -366,12 +348,15 @@ export default function AIDoctorPage() {
         addMessage("doctor", em ? `${em} ${q}` : q);
       }
     } catch (err) {
-      addMessage("doctor", `Sorry, something went wrong: ${err.message}`);
-      if (shouldListenRef.current) setTimeout(() => startMic(), 800);
+      if (!controller.signal.aborted) addMessage("doctor", err.message);
     } finally {
-      setLoading(false); isLoadingRef.current = false;
+      if (activeRequest.current === controller) {
+        activeRequest.current = null;
+        setLoading(false); isLoadingRef.current = false;
+        setMicState("off");
+      }
     }
-  }, [addMessage, startMic]);
+  }, [addMessage]);
 
   handleVoiceRef.current = handleVoiceInput;
 
@@ -388,6 +373,7 @@ export default function AIDoctorPage() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      activeRequest.current?.abort();
       shouldListenRef.current = false;
       stopTTS();
       if (recogRef.current) { try { recogRef.current.abort(); } catch (e) { void e; } }
@@ -396,39 +382,49 @@ export default function AIDoctorPage() {
 
   // ── Start consultation ──
   const startConsultation = async () => {
+    if (activeRequest.current) return;
+    const controller = new AbortController();
+    activeRequest.current = controller;
     setPhase("consulting"); phaseRef.current = "consulting";
     setMessages([]); historyRef.current = [];
-    setTurnDisplay(0); turnRef.current = 0;
+    setTurnDisplay(0);
     setLoading(true); isLoadingRef.current = true;
 
     try {
-      const res = await fetch(`${API_BASE}/api/ai-doctor/start`, {
+      const data = await requestJson("/api/ai-doctor", {
+        authenticated: true,
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patient_name: "Patient" }),
+        body: JSON.stringify({ action: "start" }),
+        signal: controller.signal,
       });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.detail || "Start failed");
-
+      if (controller.signal.aborted) return;
       historyRef.current = data.history;
-      turnRef.current = data.turn;
       setTurnDisplay(data.turn);
-      addMessage("doctor", data.response?.question || "Hello! Which language do you prefer — English or Hindi (हिंदी)?");
+      addMessage("doctor", data.response.question);
       // Enable mic — TypewriterText will call onTypingDone → speakDoctor → afterSpeak → startMic
       shouldListenRef.current = true;
     } catch (err) {
-      setPhase("error");
-      addMessage("doctor", `Connection error: ${err.message}`);
+      if (!controller.signal.aborted) {
+        setPhase("error"); phaseRef.current = "error";
+        addMessage("doctor", err.message);
+      }
     } finally {
-      setLoading(false); isLoadingRef.current = false;
+      if (activeRequest.current === controller) {
+        activeRequest.current = null;
+        setLoading(false); isLoadingRef.current = false;
+      }
     }
   };
 
   const reset = () => {
+    activeRequest.current?.abort();
+    activeRequest.current = null;
     stopTTS(); stopMic();
     setPhase("idle"); phaseRef.current = "idle";
     setMessages([]); historyRef.current = [];
-    setTurnDisplay(0); turnRef.current = 0;
+    setTurnDisplay(0);
+    setDraft("");
     setSpeaking(false); isSpeakingRef.current = false;
     setLoading(false); isLoadingRef.current = false;
     setNewMsgIdx(null);
@@ -451,7 +447,7 @@ export default function AIDoctorPage() {
             </div>
             <div>
               <h1 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: c.title }}>Doctorxcare Assistance</h1>
-              <p style={{ margin: 0, fontSize: 10, color: c.muted, marginTop: 1 }}>AI Health Consultation · Clinical Grade · Confidential</p>
+              <p style={{ margin: 0, fontSize: 10, color: c.muted, marginTop: 1 }}>Voice health assessment</p>
             </div>
           </div>
           {phase !== "idle" && (
@@ -488,26 +484,12 @@ export default function AIDoctorPage() {
               </div>
 
               <div style={{ flex: 1, minWidth: 220 }}>
-                <span style={{ display: "inline-block", padding: "5px 14px", background: isDark ? "rgba(13,157,184,0.15)" : "rgba(13,157,184,0.1)", border: "1px solid rgba(13,157,184,0.3)", borderRadius: 50, fontSize: "0.68rem", fontWeight: 700, letterSpacing: "1.2px", color: "#0d9db8", marginBottom: 12 }}>
-                  AI-POWERED CONSULTATION
-                </span>
                 <h2 style={{ fontSize: "clamp(1.3rem,3vw,2.3rem)", fontWeight: 800, margin: "0 0 10px", lineHeight: 1.25, fontFamily: "'Merriweather',Georgia,serif", color: c.title }}>
-                  Your Personal{" "}
-                  <span style={{ background: "linear-gradient(135deg,#0d9db8,#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Health Intelligence</span>{" "}
-                  Platform
+                  Talk through your symptoms
                 </h2>
                 <p style={{ fontSize: 13, lineHeight: 1.7, margin: "0 0 18px", color: c.muted, maxWidth: 500 }}>
-                  Speak naturally with Doctorxcare Assistance — no typing, no forms. Clinical-grade AI with emergency triage, differential diagnosis, and personalised next steps.
+                  Speak or type answers to follow-up questions and get guidance on when to seek care. Answers are sent to Groq. Leave out names and other identifying details.
                 </p>
-                <div style={{ display: "flex", gap: 15, flexWrap: "wrap", marginBottom: 20 }}>
-                  {[["", "Voice-First", "Just speak"], ["", "95% Accuracy", "Clinical AI"], ["", "<2 Min", "Fast"], ["", "Private", "Secure"]].map(([icon, num, label]) => (
-                    <div key={num} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "8px 13px", borderRadius: 12, background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)", border: `1px solid ${c.border}`, minWidth: 72 }}>
-                      <span style={{ fontSize: 16 }}>{icon}</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: c.title }}>{num}</span>
-                      <span style={{ fontSize: 10, fontWeight: 500, color: c.muted, textAlign: "center" }}>{label}</span>
-                    </div>
-                  ))}
-                </div>
                 <button
                   style={{ display: "inline-flex", alignItems: "center", color: "#fff", border: "none", borderRadius: 50, padding: "13px 30px", fontSize: 14, fontWeight: 700, cursor: "pointer", transition: "all 0.3s ease", background: isHovered ? "linear-gradient(135deg,#3b82f6,#0d9db8)" : "linear-gradient(135deg,#0d9db8,#3b82f6)", transform: isHovered ? "translateY(-2px) scale(1.02)" : "none", boxShadow: isHovered ? "0 10px 28px rgba(13,157,184,0.45)" : "0 6px 20px rgba(13,157,184,0.3)" }}
                   onClick={startConsultation}
@@ -517,23 +499,8 @@ export default function AIDoctorPage() {
                   Begin Consultation
                   <span style={{ marginLeft: 8, transition: "transform 0.3s", transform: isHovered ? "translateX(4px)" : "none" }}>→</span>
                 </button>
-                <p style={{ fontSize: 10, marginTop: 10, color: c.subtle }}>For emergencies call 112 immediately. AI does not replace a licensed physician.</p>
+                <p style={{ fontSize: 12, marginTop: 10, color: c.muted }}>If you may be experiencing an emergency, call your local emergency number now.</p>
               </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10 }}>
-              {[
-                { icon: "", title: "Always-On Voice", desc: "No buttons — just speak naturally" },
-                { icon: "", title: "Differential Diagnosis", desc: "Millions of clinical cases analysed" },
-                { icon: "", title: "Emergency Triage", desc: "Instant urgency classification" },
-                { icon: "", title: "Action Plan", desc: "Personalised next steps & referrals" },
-              ].map((f, i) => (
-                <div key={i} style={{ padding: "14px 16px", borderRadius: 13, border: `1px solid ${c.border}`, background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)", display: "flex", flexDirection: "column", gap: 4 }}>
-                  <span style={{ fontSize: 18, marginBottom: 2 }}>{f.icon}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: c.title }}>{f.title}</span>
-                  <span style={{ fontSize: 10, lineHeight: 1.6, color: c.muted }}>{f.desc}</span>
-                </div>
-              ))}
             </div>
           </div>
         )}
@@ -553,7 +520,7 @@ export default function AIDoctorPage() {
                 </div>
 
                 <div style={{ fontSize: 14, fontWeight: 700, color: c.title }}>Doctorxcare Assistance</div>
-                <div style={{ fontSize: 11, fontWeight: 500, color: "#0d9db8" }}>AI Physician · General Practice</div>
+                <div style={{ fontSize: 11, fontWeight: 500, color: "#0d9db8" }}>AI health information assistant</div>
 
                 {/* Waveform */}
                 <div style={{ display: "flex", alignItems: "center", gap: 2, height: 34, width: "100%" }}>
@@ -588,7 +555,7 @@ export default function AIDoctorPage() {
                 {(phase === "consulting" || phase === "done") && (
                   !micSupported ? (
                     <div style={{ color: "#fbbf24", fontSize: 10, textAlign: "center", padding: "9px 12px", background: "rgba(245,158,11,0.08)", borderRadius: 9, border: "1px solid rgba(245,158,11,0.2)", width: "100%" }}>
-                      ⚠️ Voice not supported. Use Chrome/Edge.
+                      Voice input is unavailable in this browser. Type your answer below.
                     </div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, width: "100%" }}>
@@ -664,6 +631,17 @@ export default function AIDoctorPage() {
 
                 <div ref={bottomRef} />
               </div>
+              {phase === "consulting" && (
+                <form style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: 14, borderTop: `1px solid ${c.border}` }}
+                  onSubmit={event => { event.preventDefault(); stopMic(); void handleVoiceInput(draft); }}>
+                  <input aria-label="Your answer" value={draft} onChange={event => setDraft(event.target.value)}
+                    placeholder="Type your answer" maxLength={1000} disabled={loading}
+                    style={{ flex: "1 1 12rem", minWidth: 0, padding: "9px 12px", borderRadius: 10, border: `1px solid ${c.border}`, background: c.glass, color: c.text }} />
+                  <button type="submit" className="btn btn-primary" disabled={loading || !draft.trim()}>Send</button>
+                  {micSupported && <button type="button" className="btn btn-outline-secondary" disabled={loading || speaking}
+                    onClick={() => { shouldListenRef.current = true; startMic(); }}>Use microphone</button>}
+                </form>
+              )}
             </div>
           </div>
         )}

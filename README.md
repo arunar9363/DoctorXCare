@@ -2,85 +2,69 @@
 
 ![DoctorXCare Logo](public/assets/MAINLOGO1.png)
 
-> **Smart Healthcare at Your Fingertips.**
+DoctorXCare provides a symptom checker, a disease library, WHO updates, AI chat, report analysis, health tracking, and a nearby facility finder. Private user records are stored in Firebase under the signed-in user?s account.
 
-DoctorXCare is a comprehensive full-stack digital health application designed to democratize access to medical information. It combines advanced AI (Google Gemini), medical logic engines (Infermedica), and real-time global health data (WHO) to provide users with accurate symptom analysis, disease information, and triage recommendations.
+> DoctorXCare provides educational health information and tools for organizing health records. Clinical decisions belong with a qualified healthcare professional.
 
-**⚠️ Disclaimer:** This project is for educational and informational purposes only. It is not a licensed medical device and does not replace professional medical advice, diagnosis, or treatment.
+## Run locally
 
----
+Use Node.js 22.12 or newer within the 22.x release and Python 3.12. Copy the root .env.example to .env.local. Set the server keys for the services you want to exercise.
 
-## 🚀 Key Features
+```sh
+npm ci
+python -m venv .venv
+```
 
-### 🩺 Advanced Symptom Checker & Triage
-- **AI-Driven Assessment:** Uses the **Infermedica API** to conduct a dynamic, interview-style assessment of user symptoms.
-- **Triage Logic:** Categorizes results into levels such as "Self-Care," "Consult Doctor," or "Emergency" based on medical protocols.
-- **Risk Factors:** Accounts for age, gender, and risk factors (via `api/risk_factors.js`).
+On Windows, install and start the Python API with the virtual environment?s interpreter.
 
-### 🤖 DoctorX AI Assistant
-- **Conversational Medical Bot:** Powered by **Google Gemini (Generative AI)** to answer general health queries in natural language.
-- **Contextual Awareness:** Configured with a system prompt to act as a helpful, empathetic medical professional while strictly adhering to safety guidelines.
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn doctorx_backend.main:app --host 127.0.0.1 --port 8000
+```
 
-### 📚 Disease & Outbreak Intelligence
-- **Disease Database:** Searchable library of diseases with symptoms, prevention, and treatment details.
-- **Real-time WHO Updates:** Custom hooks (`useWHOApi.js`) fetch the latest disease outbreaks and news directly from the World Health Organization RSS feeds.
+On macOS or Linux, use .venv/bin/python in both commands. If the virtual environment is active, npm run dev:api starts the Python API.
 
-### 👤 User Management & History
-- **Authentication:** Secure Login/Registration via **Firebase Auth** (Email/Password & Google Sign-In).
-- **Health History:** Saves previous symptom assessments and bookmarked diseases to **Firestore**, allowing users to track their health journey.
-- **Profile Management:** Users can manage personal details (DOB, Blood Group, Existing Conditions) which are used to personalize assessments.
+In a second terminal, start the frontend.
 
-### 🆘 Emergency Support
-- **SOS Features:** Quick access to national emergency helplines (Ambulance, Police, Mental Health support) via a dedicated modal.
+```sh
+npm run dev
+```
 
----
+Vite serves the Node API handlers and forwards medical reports, tracking, and facility searches to FastAPI. Open the local URL printed by Vite.
 
-## 🛠️ Tech Stack
+## Configure services
 
-### Frontend
-- **Framework:** React (Vite)
-- **Routing:** React Router v6 (Protected Routes implemented)
-- **Styling:** CSS Modules, Bootstrap 5, Responsive Design (Dark/Light Mode support)
-- **Icons:** Lucide React
+| Service | Configuration |
+| --- | --- |
+| Chat and voice assessment | Set `GROQ_API_KEY`. `GROQ_CHAT_MODEL` optionally selects the chat model. |
+| Lab and tracking AI | Set `GOOGLE_API_KEY` or the separate `LAB_SERVICE_API_KEY` and `TRACKING_SERVICE_API_KEY`. |
+| Gemini model | Set `GEMINI_MODEL` to override the default. The Python lab and tracking endpoints also support `LAB_GEMINI_MODEL` and `TRACKING_GEMINI_MODEL`. |
+| Facility finder | Set `GOOGLE_PLACES_API_KEY` and enable Places API (New) for that key. Set `VITE_Maps_API_KEY` for the optional browser map. |
+| Firebase | The existing web configuration is the default. For staging, set all `VITE_FIREBASE_*` settings for the chosen project and apply its Firestore rules. |
+| Symptom assessment | Set `GROQ_API_KEY` in the server environment. `GROQ_TRIAGE_MODEL` optionally selects a Groq model that supports strict structured outputs. |
+| WHO | The Node API reads WHO news and outbreak reports directly. |
 
-### Backend (Serverless)
-- **Architecture:** Node.js Serverless Functions (Vercel API Routes)
-- **Role:** Acts as a secure proxy layer to hide API keys and handle CORS.
-- **Endpoints:**
-  - `/api/diagnosis` - Handles Infermedica diagnosis logic.
-  - `/api/chat` - Handles Google Gemini interactions.
-  - `/api/triage` - Generates final care recommendations.
-  - `/api/who` - Proxies WHO RSS feeds.
+Set server keys in the hosting environment. The Vite-prefixed values are visible in the browser. Keep the Places server key separate from the restricted Maps JavaScript key.
 
-### Infrastructure & Services
-- **Database:** Firebase Firestore (NoSQL)
-- **Auth:** Firebase Authentication
-- **Medical Logic:** Infermedica API
-- **LLM:** Google Gemini API
-- **Deployment:** Vercel (Recommended)
+The Groq assessment asks 10 to 15 follow-up questions for routine results. The urgent warning signs screen can show emergency guidance immediately. The report provides a care recommendation, explains what the user reported, and lists possible causes to discuss with a clinician when the answers support them. Users can download the report or save it to History.
 
----
+Interview answers are held in a signed, one-hour session. Groq receives the intake and answers to generate each question. Saved reports go to the signed-in user's Firestore history when they choose Save to history. Set `TRIAGE_SESSION_SECRET` if you want to rotate the Groq key independently of active interview sessions.
 
-## 📂 Project Structure
+The Firebase emulators can be started with `firebase emulators:start --only auth,firestore --project demo-doctorx`. For local emulator use, set `VITE_FIREBASE_PROJECT_ID=demo-doctorx`, enable the Auth emulator at `127.0.0.1:9099` and the Firestore emulator at `127.0.0.1:8080` in both the corresponding server and Vite settings in .env.local.
 
-```bash
-DoctorXCare/
-├── api/                    # Serverless Backend Functions
-│   ├── chat.js             # Google Gemini Proxy
-│   ├── diagnosis.js        # Infermedica Diagnosis Proxy
-│   ├── symptoms.js         # Symptom Search Proxy
-│   └── ...
-├── public/                 # Static Assets (Images, Logos)
-├── src/
-│   ├── components/
-│   │   ├── common/         # Navbar, Footer, LoginModal, Toast
-│   │   ├── features/       # Core Logic (SymptomChecker, DiseaseSearch)
-│   │   └── sections/       # UI Sections (Hero, About, Audience)
-│   ├── hooks/              # Custom Hooks (useWHOApi)
-│   ├── pages/              # Route Pages (Home, Profile, History)
-│   ├── services/           # Firebase Service functions
-│   ├── App.jsx             # Main Application Component
-│   ├── firebase.js         # Firebase Configuration
-│   └── main.jsx            # Entry Point
-├── .env.example            # Environment Variable Template
-└── package.json            # Dependencies
+## Verify
+
+```sh
+npm run lint
+npm test
+python -m unittest discover -s tests -p "test_*.py" -v
+npm run build
+```
+
+The tests use synthetic reports and simulated provider responses. The Node and Python readiness endpoints are `/api/health` and `/api/python-health`. They return 503 when required provider configuration is missing.
+
+## Deploy
+
+Vercel uses the Vite project preset and routes the Python APIs through api/medical.py. Keep the repository root as the Vercel project root so both the Node and Python manifests are available.
+
+Apply firestore.rules in the target Firebase project before verifying accounts, bookmarks, readings, and feedback. New feedback uses separate documents for testimonials and private contact details. Legacy feedback remains in its original collection, which the included rules restrict.

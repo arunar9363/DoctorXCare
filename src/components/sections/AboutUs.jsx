@@ -776,7 +776,7 @@ function About() {
 
             <h4 id="sec-overview">Company Overview</h4>
             <p>DoctorXCare is a leading digital health information platform that revolutionizes how individuals understand and manage their health concerns. Founded with the vision of democratizing healthcare information, we bridge the gap between medical expertise and public accessibility through innovative AI-powered technology solutions.</p>
-            <p>Our platform serves as a comprehensive digital health companion, featuring an advanced AI Medical Assistant powered by Google Gemini. This intelligent assistant provides personalized medical guidance, accurate treatment recommendations, and professional health advice based on established medical guidelines. By combining evidence-based medical knowledge with state-of-the-art artificial intelligence, DoctorXCare delivers reliable, accurate, and actionable health insights tailored to each user unique needs.</p>
+            <p>DoctorXCare includes a Groq-powered AI health assistant that explains general health information and helps users prepare questions for a healthcare professional.</p>
             <p>From symptom analysis and disease information to personalized health risk assessments, DoctorXCare empowers individuals worldwide to make informed decisions about their health and wellness. We are committed to ensuring that quality healthcare information and expert medical guidance are accessible to everyone, anytime, anywhere.</p>
 
             <hr className="section-divider" />
@@ -790,13 +790,13 @@ function About() {
 
             <h4 id="sec-services">Our Core Services</h4>
 
-            <p><strong>1. AI Symptom Analysis (Powered by Infermedica):</strong> Experience clinical-grade triage powered by the world-leading Infermedica API. Our engine analyzes symptoms against millions of clinical cases to provide research-backed triage advice.</p>
+            <p><strong>1. Personal Symptom Assessment</strong> A Groq-powered interview asks follow-up questions about your symptoms and produces a report with a care recommendation and possible causes to discuss with a healthcare professional.</p>
 
             <p><strong>2. Disease Knowledge Hub:</strong> Access a comprehensive, medically reviewed library containing detailed information on thousands of conditions. This resource is continuously updated with the latest health advisories and WHO guidelines for educational clarity.</p>
 
             <p><strong>3. Smart Lab Analysis:</strong> Upload lab reports and medical imaging for AI-driven interpretation. Gain instant feedback on abnormal values, track historical health trends, and receive detailed clinical insights.</p>
 
-            <p><strong>4. 24/7 AI Health Assistant (Powered by Google Gemini):</strong> Your intelligent health companion available round-the-clock. It provides evidence-based guidance, explains complex medical concepts, and offers personalized support through secure, contextual conversations.</p>
+            <p><strong>4. AI Health Assistant</strong> Ask about health concepts and follow up in the same Groq-powered conversation.</p>
 
             <p><strong>5. Chronic Disease Management:</strong> A dedicated platform for long-term monitoring of conditions like Diabetes and Hypertension. Benefit from visual health trend analytics, lifestyle tracking, and proactive health alerts to manage your well-being effectively.<em>---In development phase---</em>
 </p>
@@ -829,7 +829,7 @@ function About() {
             <hr className="section-divider" />
 
             <h4 id="sec-tech">Technology &amp; Approach</h4>
-            <p><strong>Intelligent Analysis Engine:</strong> Our symptom analysis engine is built on a foundation of carefully researched and validated health information. We are committed to ensuring our knowledge base is comprehensive and reflects a deep understanding of the conditions presented. Our integration with industry-leading APIs ensures clinical-grade accuracy.</p>
+            <p><strong>Symptom Interview</strong> Your earlier answers guide the next question. Urgent warning signs can end the interview early with guidance to seek emergency help.</p>
             <p><strong>User-Centric Design:</strong> We believe that health information should be clear and empowering. Every aspect of our platform is designed with the user experience as the top priority, ensuring complex medical topics are presented in an accessible and easy-to-understand format. Our interface is intuitive, responsive, and designed for users of all technical backgrounds.</p>
             <p><strong>Commitment to Accuracy:</strong> We are dedicated to providing accurate and relevant health information. All content undergoes a thorough internal review process to ensure its validity, and we are committed to keeping it updated with the latest health insights from trusted medical sources and research institutions.</p>
             <p><strong>Continuous Improvement:</strong> Our platform is constantly evolving. We actively use user feedback to guide our improvements, and your input is essential to helping us enhance our services. We employ agile development methodologies and regular updates to ensure we are always delivering the best possible experience.</p>
