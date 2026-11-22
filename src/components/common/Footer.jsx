@@ -356,35 +356,16 @@ function Footer() {
                 Arun Pratap Singh
               </a>
               {' '}<br />
-              Pocket-4 Phi-2 Greater Noida<br />
-              India, 201310
+              Noble Enclave
             </p>
             <p style={{ ...footerSectionPStyles, ...contactInfoStyles }}>
-              Contact: <a
-                href="mailto:contact@doctorxcare.in"
+              <a
+                href="mailto:arunstp45@gmail.com"
                 style={contactLinkStyles}
                 onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
                 onMouseOut={(e) => e.target.style.textDecoration = 'none'}
               >
-                contact@doctorxcare.in
-              </a> <br />
-              Support: <a
-                href="mailto:support@doctorxcare.in"
-                style={contactLinkStyles}
-                onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
-                onMouseOut={(e) => e.target.style.textDecoration = 'none'}
-              >
-                support@doctorxcare.in
-              </a>
-            </p>
-            <p style={{ ...footerSectionPStyles, ...contactInfoStyles }}>
-              WhatsApp: <a
-                href="https://wa.me/917839059397"
-                style={contactLinkStyles}
-                onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
-                onMouseOut={(e) => e.target.style.textDecoration = 'none'}
-              >
-                +91 7839059397
+                arunstp45@gmail.com
               </a>
             </p>
           </div>
