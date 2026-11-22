@@ -46,6 +46,11 @@ build/Release
 
 # Dependency directories
 node_modules/
+venv/
+.venv/
+
+# Production build
+/dist/
 
 # Optional npm cache directory
 .npm
@@ -62,11 +67,9 @@ node_modules/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variables file
+# Local environment files
 .env
+.env.local
 
 # dataconnect generated files
 .dataconnect
-
-# phi media files
-python-ai-agents/venv
