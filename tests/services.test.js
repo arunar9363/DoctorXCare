@@ -96,8 +96,9 @@ test("voice consultation verifies sign-in, retains context, and stops on urgent 
     else process.env.GROQ_API_KEY = oldKey;
   });
   const modelReplies = [
-    { status: "question", question: "When did that start?" },
-    { status: "complete", care: "emergency_ambulance" },
+    { action: "self_care", question: "When did that start?", summary: "Fixture early report.", conditions: [] },
+    { action: "emergency_ambulance", question: "", summary: "", conditions: [] },
+    { action: "consultation", question: "", summary: "Fixture report after seven answers.", conditions: [] },
   ];
   const calls = [];
   t.mock.method(globalThis, "fetch", async (input, options) => {
@@ -117,12 +118,28 @@ test("voice consultation verifies sign-in, retains context, and stops on urgent 
   const followUp = await send({ action: "respond", patient_message: "Synthetic first answer", history: start.body.history });
   assert.equal(followUp.code, 200);
   assert.equal(followUp.body.turn, 1);
+  assert.equal(followUp.body.assessment_ready, false);
   assert.equal(followUp.body.response.question, "When did that start?");
   const urgent = await send({ action: "respond", patient_message: "Synthetic urgent follow-up", history: followUp.body.history });
   assert.equal(urgent.code, 200);
   assert.equal(urgent.body.assessment_ready, true);
   assert.equal(urgent.body.response.triage_level, "emergency_ambulance");
-  assert.deepEqual(calls[1].messages.slice(1, -1), followUp.body.history);
+  assert.equal(calls[1].response_format.type, "json_schema");
+  assert.equal(calls[1].response_format.json_schema.strict, true);
+  assert.deepEqual(calls[1].response_format.json_schema.schema.properties.action.enum,
+    ["question", "emergency_ambulance", "consultation_24", "consultation", "self_care"]);
+  assert.deepEqual(JSON.parse(calls[1].messages[1].content).slice(0, -1), followUp.body.history);
+
+  const routineHistory = [...start.body.history];
+  for (let turn = 1; turn < 7; turn++) {
+    routineHistory.push({ role: "user", content: `Fixture answer ${turn}` }, { role: "assistant", content: `Fixture question ${turn}` });
+  }
+  const completed = await send({ action: "respond", patient_message: "Fixture final answer", history: routineHistory });
+  assert.equal(completed.code, 200);
+  assert.equal(completed.body.turn, 7);
+  assert.equal(completed.body.assessment_ready, true);
+  assert.equal(completed.body.response.triage_level, "consultation");
+  assert.equal(calls[2].response_format.json_schema.schema.properties.action.enum.includes("question"), false);
 });
 
 test("WHO news and outbreaks use distinct field selections and links", async t => {

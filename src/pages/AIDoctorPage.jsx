@@ -16,21 +16,15 @@ function getSR() { return window.SpeechRecognition || window.webkitSpeechRecogni
 function stopTTS() { window.speechSynthesis?.cancel(); }
 
 function ttsSpeak(text, onEnd) {
-  if (!window.speechSynthesis) { onEnd?.(); return; }
-  stopTTS();
+  if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) { onEnd(); return; }
   const utt = new SpeechSynthesisUtterance(text);
   utt.rate = 0.92; utt.pitch = 1.05; utt.volume = 1;
-  const pickVoice = () => {
-    const vs = window.speechSynthesis.getVoices();
-    const v = vs.find(v => v.lang.startsWith("en") && /natural|premium|google/i.test(v.name))
-      || vs.find(v => v.lang.startsWith("en")) || vs[0];
-    if (v) utt.voice = v;
-  };
-  pickVoice();
-  if (!window.speechSynthesis.getVoices().length)
-    window.speechSynthesis.onvoiceschanged = pickVoice;
-  utt.onend = () => onEnd?.();
-  utt.onerror = () => onEnd?.();
+  const voices = window.speechSynthesis.getVoices();
+  const voice = voices.find(voice => voice.lang.startsWith("en") && /natural|premium|google/i.test(voice.name))
+    || voices.find(voice => voice.lang.startsWith("en")) || voices[0];
+  if (voice) utt.voice = voice;
+  utt.onend = onEnd;
+  utt.onerror = onEnd;
   window.speechSynthesis.speak(utt);
 }
 
@@ -165,18 +159,18 @@ export default function AIDoctorPage() {
   const [loading, setLoading] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [muted, setMuted] = useState(false);
-  const [newMsgIdx, setNewMsgIdx] = useState(null);
   const [micSupported] = useState(() => !!getSR());
   const [interimText, setInterimText] = useState("");
   const [draft, setDraft] = useState("");
   const [micState, setMicState] = useState("off");
+  const [micNotice, setMicNotice] = useState("");
   const [isHovered, setIsHovered] = useState(false);
   const [navHeight, setNavHeight] = useState(64);
   const [turnDisplay, setTurnDisplay] = useState(0);
 
   // ── All mutable state lives in refs so mic callbacks never go stale ──
   const recogRef = useRef(null);
-  const finalRef = useRef("");
+  const speechRef = useRef(null);
   const shouldListenRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const isLoadingRef = useRef(false);
@@ -185,9 +179,6 @@ export default function AIDoctorPage() {
   const historyRef = useRef([]);
   const phaseRef = useRef("idle");
   const bottomRef = useRef(null);
-
-  // Keep mutable refs in sync
-  useEffect(() => { isMutedRef.current = muted; }, [muted]);
 
   // ── Navbar ──
   useEffect(() => {
@@ -216,94 +207,112 @@ export default function AIDoctorPage() {
 
   // ── Add message ──
   const addMessage = useCallback((role, text, extra = null) => {
-    setMessages(prev => {
-      const next = [...prev, { role, text, extra }];
-      setNewMsgIdx(next.length - 1);
-      return next;
-    });
+    setMessages(prev => [...prev, { role, text, extra }]);
   }, []);
 
   // ══════════════════════════════════════════
   //  MIC ENGINE — pure refs, no stale closures
   // ══════════════════════════════════════════
 
-  // Forward ref for mutual recursion
   const handleVoiceRef = useRef(null);
 
-  // startMic: fire-and-forget, reads everything from refs
+  const stopMic = useCallback(() => {
+    shouldListenRef.current = false;
+    const recognition = recogRef.current;
+    recogRef.current = null;
+    try { recognition?.abort(); } catch { /* The browser may have already ended capture. */ }
+    setMicState("off");
+    setInterimText("");
+  }, []);
+
   const startMic = useCallback(() => {
     const SR = getSR();
-    if (!SR || !shouldListenRef.current || isLoadingRef.current || isSpeakingRef.current) return;
-
-    if (recogRef.current) {
-      try { recogRef.current.abort(); } catch (e) { void e; }
-      recogRef.current = null;
-    }
-    finalRef.current = "";
-    setInterimText("");
+    if (!SR || phaseRef.current !== "consulting" || !shouldListenRef.current
+      || recogRef.current || isLoadingRef.current || isSpeakingRef.current) return;
 
     const r = new SR();
+    let transcript = "";
     r.lang = "en-US";
     r.continuous = false;
     r.interimResults = true;
     r.maxAlternatives = 1;
 
-    r.onstart = () => setMicState("listening");
+    r.onstart = () => {
+      if (recogRef.current === r) setMicState("listening");
+    };
 
-    r.onresult = (evt) => {
+    r.onresult = evt => {
+      if (recogRef.current !== r || !shouldListenRef.current) return;
       let interim = "";
       for (let i = evt.resultIndex; i < evt.results.length; i++) {
         const t = evt.results[i][0].transcript;
-        if (evt.results[i].isFinal) finalRef.current += (finalRef.current ? " " : "") + t.trim();
+        if (evt.results[i].isFinal) transcript += (transcript ? " " : "") + t.trim();
         else interim += t;
       }
-      setInterimText(finalRef.current + (interim ? " " + interim : ""));
+      setInterimText(transcript + (interim ? " " + interim : ""));
     };
 
-    r.onerror = (evt) => {
-      if (evt.error === "not-allowed" || evt.error === "service-not-allowed") {
-        shouldListenRef.current = false;
-        setMicState("off");
-      } else if (shouldListenRef.current && !isLoadingRef.current && !isSpeakingRef.current) {
-        setTimeout(() => startMic(), 700);
-      }
+    r.onerror = evt => {
+      if (recogRef.current !== r) return;
+      stopMic();
+      const denied = evt.error === "not-allowed" || evt.error === "service-not-allowed";
+      setMicNotice(denied
+        ? "Microphone permission was denied. Allow microphone access or type your answer."
+        : evt.error === "no-speech"
+          ? "No speech was detected. Try the microphone again or type your answer."
+          : "Voice recognition stopped. Try the microphone again or type your answer.");
     };
 
     r.onend = () => {
-      const final = finalRef.current.trim();
-      finalRef.current = "";
+      if (recogRef.current !== r) return;
+      recogRef.current = null;
       setInterimText("");
-      if (final && shouldListenRef.current && !isLoadingRef.current) {
-        handleVoiceRef.current?.(final);
-      } else if (shouldListenRef.current && !isLoadingRef.current && !isSpeakingRef.current) {
-        setTimeout(() => startMic(), 400);
+      setMicState("off");
+      if (!shouldListenRef.current || isLoadingRef.current || isSpeakingRef.current) return;
+      if (transcript.trim()) {
+        handleVoiceRef.current?.(transcript);
+      } else {
+        shouldListenRef.current = false;
+        setMicNotice("No speech was detected. Try the microphone again or type your answer.");
       }
     };
 
     recogRef.current = r;
-    try { r.start(); } catch (e) { console.warn("mic:", e); }
-  }, []); // zero state deps — pure refs
-
-  // afterSpeak: called when TTS finishes
-  const afterSpeak = useCallback(() => {
-    setSpeaking(false); isSpeakingRef.current = false;
-    if (shouldListenRef.current && !isLoadingRef.current) {
-      setMicState("listening");
-      setTimeout(() => startMic(), 300);
-    } else {
-      setMicState("off");
+    setMicNotice("");
+    setMicState("starting");
+    try { r.start(); } catch {
+      stopMic();
+      setMicNotice("The microphone could not start. Try again or type your answer.");
     }
-  }, [startMic]);
+  }, [stopMic]);
 
-  // speakDoctor: play TTS then restart mic
+  const stopAudio = useCallback(() => {
+    speechRef.current = null;
+    isSpeakingRef.current = false;
+    setSpeaking(false);
+    stopTTS();
+  }, []);
+
   const speakDoctor = useCallback((text) => {
+    if (phaseRef.current === "idle" || phaseRef.current === "error" || isLoadingRef.current || recogRef.current) return;
     if (isMutedRef.current) {
-      if (shouldListenRef.current && !isLoadingRef.current) setTimeout(() => startMic(), 300);
+      startMic();
       return;
     }
+    stopAudio();
+    const speech = Symbol();
+    speechRef.current = speech;
     setSpeaking(true); isSpeakingRef.current = true; setMicState("speaking");
-    ttsSpeak(text, afterSpeak);
-  }, [afterSpeak, startMic]);
+    const onEnd = () => {
+      if (speechRef.current !== speech) return;
+      speechRef.current = null;
+      isSpeakingRef.current = false;
+      setSpeaking(false);
+      setMicState("off");
+      startMic();
+    };
+    try { ttsSpeak(text, onEnd); } catch { onEnd(); }
+  }, [startMic, stopAudio]);
 
   // Called when typewriter animation finishes for a doctor message
   const onTypingDone = useCallback((text) => {
@@ -318,7 +327,8 @@ export default function AIDoctorPage() {
     activeRequest.current = controller;
     addMessage("patient", answer);
     setLoading(true); isLoadingRef.current = true;
-    setMicState("processing"); stopTTS();
+    stopAudio();
+    setMicState("processing");
 
     try {
       const data = await requestJson("/api/ai-doctor", {
@@ -348,7 +358,11 @@ export default function AIDoctorPage() {
         addMessage("doctor", em ? `${em} ${q}` : q);
       }
     } catch (err) {
-      if (!controller.signal.aborted) addMessage("doctor", err.message);
+      if (!controller.signal.aborted) {
+        shouldListenRef.current = false;
+        setDraft(answer);
+        addMessage("doctor", err.message);
+      }
     } finally {
       if (activeRequest.current === controller) {
         activeRequest.current = null;
@@ -356,27 +370,21 @@ export default function AIDoctorPage() {
         setMicState("off");
       }
     }
-  }, [addMessage]);
+  }, [addMessage, stopAudio]);
 
   handleVoiceRef.current = handleVoiceInput;
-
-  // stopMic: kill mic permanently
-  const stopMic = useCallback(() => {
-    shouldListenRef.current = false;
-    if (recogRef.current) {
-      try { recogRef.current.abort(); } catch (e) { void e; }
-      recogRef.current = null;
-    }
-    setMicState("off"); setInterimText("");
-  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       activeRequest.current?.abort();
+      activeRequest.current = null;
       shouldListenRef.current = false;
+      speechRef.current = null;
       stopTTS();
-      if (recogRef.current) { try { recogRef.current.abort(); } catch (e) { void e; } }
+      const recognition = recogRef.current;
+      recogRef.current = null;
+      try { recognition?.abort(); } catch { /* The browser may have already ended capture. */ }
     };
   }, []);
 
@@ -388,6 +396,7 @@ export default function AIDoctorPage() {
     setPhase("consulting"); phaseRef.current = "consulting";
     setMessages([]); historyRef.current = [];
     setTurnDisplay(0);
+    setMicNotice("");
     setLoading(true); isLoadingRef.current = true;
 
     try {
@@ -420,14 +429,34 @@ export default function AIDoctorPage() {
   const reset = () => {
     activeRequest.current?.abort();
     activeRequest.current = null;
-    stopTTS(); stopMic();
+    stopAudio(); stopMic();
     setPhase("idle"); phaseRef.current = "idle";
     setMessages([]); historyRef.current = [];
     setTurnDisplay(0);
     setDraft("");
-    setSpeaking(false); isSpeakingRef.current = false;
+    setMicNotice("");
     setLoading(false); isLoadingRef.current = false;
-    setNewMsgIdx(null);
+  };
+
+  const toggleAudio = () => {
+    const next = !isMutedRef.current;
+    isMutedRef.current = next;
+    setMuted(next);
+    if (next && isSpeakingRef.current) {
+      stopAudio();
+      setMicState("off");
+      startMic();
+    }
+  };
+
+  const micActive = micState === "starting" || micState === "listening";
+  const toggleMicrophone = () => {
+    const capturing = Boolean(recogRef.current);
+    stopMic();
+    if (capturing) return;
+    stopAudio();
+    shouldListenRef.current = true;
+    startMic();
   };
 
   const c = isDark ? DARK : LIGHT;
@@ -453,7 +482,7 @@ export default function AIDoctorPage() {
           {phase !== "idle" && (
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <button style={{ border: `1px solid ${c.border}`, borderRadius: 50, padding: "6px 14px", cursor: "pointer", fontSize: 11, fontWeight: 500, background: c.pillBg, color: c.muted }}
-                onClick={() => setMuted(m => { if (!m) stopTTS(); return !m; })}>
+                onClick={toggleAudio}>
                 {muted ? "🔇 Muted" : "🔊 Audio"}
               </button>
               <button style={{ border: "1px solid rgba(239,68,68,0.2)", borderRadius: 50, padding: "6px 14px", cursor: "pointer", fontSize: 11, fontWeight: 500, background: "rgba(239,68,68,0.08)", color: "#ef4444" }} onClick={reset}>
@@ -574,7 +603,8 @@ export default function AIDoctorPage() {
                         {micState === "listening" ? "Listening… speak now"
                           : micState === "processing" ? "Processing your reply"
                             : micState === "speaking" ? "Doctorxcare Assistance is speaking"
-                              : "Microphone ready"}
+                              : micState === "starting" ? "Starting microphone…"
+                                : "Microphone off"}
                       </span>
                     </div>
                   )
@@ -603,7 +633,7 @@ export default function AIDoctorPage() {
                     role={m.role}
                     text={m.text}
                     extra={m.extra}
-                    isNew={i === newMsgIdx && m.role === "doctor"}
+                    isNew={i === messages.length - 1 && m.role === "doctor"}
                     isDark={isDark}
                     c={c}
                     onTypingDone={() => onTypingDone(m.text)}
@@ -638,8 +668,9 @@ export default function AIDoctorPage() {
                     placeholder="Type your answer" maxLength={1000} disabled={loading}
                     style={{ flex: "1 1 12rem", minWidth: 0, padding: "9px 12px", borderRadius: 10, border: `1px solid ${c.border}`, background: c.glass, color: c.text }} />
                   <button type="submit" className="btn btn-primary" disabled={loading || !draft.trim()}>Send</button>
-                  {micSupported && <button type="button" className="btn btn-outline-secondary" disabled={loading || speaking}
-                    onClick={() => { shouldListenRef.current = true; startMic(); }}>Use microphone</button>}
+                  {micSupported && <button type="button" className="btn btn-outline-secondary" disabled={loading}
+                    onClick={toggleMicrophone}>{micActive ? "Stop microphone" : "Use microphone"}</button>}
+                  {micNotice && <p role="status" style={{ flexBasis: "100%", color: c.muted, margin: 0, fontSize: 12 }}>{micNotice}</p>}
                 </form>
               )}
             </div>

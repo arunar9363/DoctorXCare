@@ -356,7 +356,7 @@ function Footer() {
                 Arun Pratap Singh
               </a>
               {' '}<br />
-              Noble Enclave
+              Noble Enclave Gurugram, Haryana, India
             </p>
             <p style={{ ...footerSectionPStyles, ...contactInfoStyles }}>
               <a
