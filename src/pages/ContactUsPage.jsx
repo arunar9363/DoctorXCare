@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Star, Send, CheckCircle, ChevronLeft, ChevronRight, Mail, Phone, MessageSquare } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy } from 'firebase/firestore';
 
 import contactImage from '/assets/c1.svg';
 import doctorXLogo from '/assets/MAINLOGO2.png';
@@ -148,7 +148,7 @@ function ContactPage() {
   useEffect(() => {
     const loadFeedbacks = async () => {
       try {
-        const q = query(collection(db, 'publicFeedback'), orderBy('createdAt', 'desc'), limit(50));
+        const q = query(collection(db, 'feedbacks'), orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
 
         const firebaseData = querySnapshot.docs.map(doc => {
@@ -241,7 +241,7 @@ function ContactPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.name.trim() || !formData.email.trim() || !formData.message.trim() || !formData.feedback_type) {
+    if (!formData.name || !formData.email || !formData.message || !formData.feedback_type) {
       setToast({ type: 'error', title: 'Error', message: 'Please fill all required fields.' });
       return;
     }
@@ -254,26 +254,23 @@ function ContactPage() {
     setIsSubmitting(true);
 
     try {
-      const docRef = doc(collection(db, 'publicFeedback'));
-      const publicFeedback = {
-        name: formData.name.trim(),
+      const docRef = await addDoc(collection(db, 'feedbacks'), {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone || 'N/A',
         type: formData.feedback_type,
-        message: formData.message.trim(),
-        rating,
-      };
-      const batch = writeBatch(db);
-      batch.set(docRef, { ...publicFeedback, createdAt: serverTimestamp() });
-      batch.set(doc(db, 'feedbackSubmissions', docRef.id), {
-        email: formData.email.trim(),
-        phone: formData.phone.trim(),
+        message: formData.message,
+        rating: rating,
         createdAt: serverTimestamp(),
-        status: 'new',
+        status: 'new'
       });
-      await batch.commit();
 
       const newFeedback = {
         id: docRef.id,
-        ...publicFeedback,
+        name: formData.name,
+        type: formData.feedback_type,
+        message: formData.message,
+        rating: rating,
         createdAt: new Date(),
       };
 
@@ -297,7 +294,7 @@ function ContactPage() {
       setToast({
         type: 'error',
         title: 'Submission Failed',
-        message: 'Your feedback could not be saved. Please try again.'
+        message: 'Check your internet connection.'
       });
     } finally {
       setIsSubmitting(false);
@@ -443,6 +440,7 @@ function ContactPage() {
     input: {
       width: '100%',
       padding: '18px 20px',
+      border: 'none',
       borderRadius: '12px',
       fontSize: '16px',
       outline: 'none',
@@ -451,6 +449,7 @@ function ContactPage() {
       transition: 'all 0.3s ease',
       boxSizing: 'border-box',
       fontFamily: "'Inter', sans-serif",
+      // eslint-disable-next-line no-dupe-keys
       border: `1px solid ${isDarkMode ? 'rgba(75, 85, 99, 0.5)' : 'rgba(226, 232, 240, 1)'}`,
       boxShadow: isDarkMode
         ? '0 2px 4px rgba(0, 0, 0, 0.2)'
@@ -779,7 +778,6 @@ function ContactPage() {
                     <input
                       type="text"
                       name="name"
-                      maxLength={100}
                       placeholder="Full Name *"
                       value={formData.name}
                       onChange={handleInputChange}
@@ -789,7 +787,6 @@ function ContactPage() {
                     <input
                       type="email"
                       name="email"
-                      maxLength={254}
                       placeholder="Email Address *"
                       value={formData.email}
                       onChange={handleInputChange}
@@ -802,7 +799,6 @@ function ContactPage() {
                     <input
                       type="tel"
                       name="phone"
-                      maxLength={40}
                       placeholder="Phone Number (Optional)"
                       value={formData.phone}
                       onChange={handleInputChange}
@@ -827,7 +823,6 @@ function ContactPage() {
 
                   <textarea
                     name="message"
-                    maxLength={2000}
                     placeholder="Share your detailed feedback here... Tell us about your experience, suggestions for improvement, or any issues you've encountered. *"
                     value={formData.message}
                     onChange={handleInputChange}

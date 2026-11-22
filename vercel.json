@@ -1,31 +1,39 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "vite",
-  "buildCommand": "npm run build",
-  "functions": {
-    "api/medical.py": {
-      "includeFiles": "{doctorx_backend/**,shared/firebase-public.json}"
-    }
-  },
   "rewrites": [
     {
-      "source": "/api/:service(medical-analysis|python-health|chronic-care|recovery-plan|find-specialist)",
-      "destination": "/api/medical"
+      "source": "/api/medical-analysis",
+      "destination": "/api/python-ai-agents/main"
     },
     {
-      "source": "/api/health-tracking/:path*",
-      "destination": "/api/medical"
+      "source": "/api/health-tracking/scan-report",
+      "destination": "/api/python-ai-agents/main"
     },
     {
-      "source": "/api/v1/nearby-finder",
-      "destination": "/api/medical"
+      "source": "/api/health-tracking/analyze",
+      "destination": "/api/python-ai-agents/main"
     },
     {
-      "source": "/api/v1/facility-details/:placeId",
-      "destination": "/api/medical"
+      "source": "/api/health-tracking/trend-analysis",
+      "destination": "/api/python-ai-agents/main"
     },
     {
-      "source": "/((?!api(?:/|$)).*)",
+      "source": "/api/health-tracking/quick-log",
+      "destination": "/api/python-ai-agents/main"
+    },
+    {
+      "source": "/api/chronic-care",
+      "destination": "/api/python-ai-agents/main"
+    },
+    {
+      "source": "/api/recovery-plan",
+      "destination": "/api/python-ai-agents/main"
+    },
+    {
+      "source": "/api/find-specialist",
+      "destination": "/api/python-ai-agents/main"
+    },
+    {
+      "source": "/((?!api).*)",
       "destination": "/index.html"
     }
   ]

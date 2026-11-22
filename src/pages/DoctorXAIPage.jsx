@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react";
-import { requestJson } from "../services/apiClient";
 
 export default function DoctorXAIPage() {
   const [messages, setMessages] = useState([
@@ -9,10 +8,41 @@ export default function DoctorXAIPage() {
     }
   ]);
   const [input, setInput] = useState("");
-  const [conversation, setConversation] = useState([]);
   const [loading, setLoading] = useState(false);
   const [theme, setTheme] = useState("light");
   const chatBoxRef = useRef(null);
+
+  // Simple markdown to HTML converter
+  const parseMarkdown = (text) => {
+    if (!text) return "";
+
+    // Convert bold **text** to <strong>
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+    // Convert italic *text* to <em>
+    text = text.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
+
+    // Convert ### Heading to <h3>
+    text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+
+    // Convert ## Heading to <h2>
+    text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+
+    // Convert # Heading to <h1>
+    text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+    // Convert bullet points
+    text = text.replace(/^\* (.+)$/gm, '<li>$1</li>');
+    text = text.replace(/^- (.+)$/gm, '<li>$1</li>');
+
+    // Wrap consecutive <li> in <ul>
+    text = text.replace(/(<li>.*<\/li>\n?)+/g, (match) => `<ul>${match}</ul>`);
+
+    // Convert line breaks to <br>
+    text = text.replace(/\n/g, '<br/>');
+
+    return text;
+  };
 
   useEffect(() => {
     const htmlElement = document.documentElement;
@@ -46,32 +76,43 @@ export default function DoctorXAIPage() {
   }, [messages]);
 
   const sendMessage = async () => {
-    const content = input.trim();
-    if (!content || loading) return;
+    if (!input.trim()) return;
 
-    const history = [...conversation, { role: "user", content }];
-    setMessages(prev => [...prev, { type: "user", text: content }]);
+    const userMessage = input.trim();
+    setMessages([...messages, { type: "user", text: userMessage }]);
     setInput("");
     setLoading(true);
+
+    const systemPrompt = `You are DoctorXCare, a professional AI medical assistant and doctor. Be helpful, informative, polite, and provide accurate health information. Always give medical help as a doctor would, including suggesting appropriate medicines, treatments, and remedies when relevant. Provide SHORT and BEST solutions to medical problems - be concise, direct, and focus on the most effective treatments. Keep responses point. Provide professional medical advice, medication suggestions, and treatment options in a clear, easy-to-understand format. and always prioritize user safety and well-being. provide disclaimers when necessary. provide medical information based on established medical guidelines and practices. Never provide harmful or dangerous advice.
+    do not answer questions outside the medical domain. do not mention disclaimer unless asked.
+
+User Query: ${userMessage}`;
+
     try {
-      const data = await requestJson("/api/chat", {
-        authenticated: true,
+      const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({
+          message: systemPrompt,
+          userMessage: userMessage
+        }),
       });
-      if (typeof data.response !== "string" || !data.response.trim()) throw new Error("DoctorX AI returned an empty response.");
-      setMessages(prev => [...prev, { type: "bot", text: data.response }]);
-      setConversation([...history, { role: "assistant", content: data.response.slice(0, 2000) }].slice(-12));
+
+      const data = await response.json();
+      if (data.response) {
+        setMessages((prev) => [...prev, { type: "bot", text: data.response }]);
+      } else {
+        setMessages((prev) => [...prev, { type: "error", text: "Error: " + data.error }]);
+      }
     } catch (error) {
-      setMessages(prev => [...prev, { type: "error", text: error.message }]);
+      setMessages((prev) => [...prev, { type: "error", text: "Error: " + error.message }]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleKeyDown = (event) => {
-    if (event.key === "Enter" && !event.nativeEvent.isComposing) sendMessage();
+  const handleKeyPress = (e) => {
+    if (e.key === "Enter" && !loading) sendMessage();
   };
 
   const colors = {
@@ -123,7 +164,7 @@ export default function DoctorXAIPage() {
                   Welcome to DoctorXCare AI Assistance
                 </h2>
                 <p style={{ color: c.dark, opacity: 0.7, fontSize: "14px", maxWidth: "400px", margin: "12px auto 0" }}>
-                  Ask about symptoms, conditions, and general wellness. <br />Powered by Groq.
+                  Ask me health-related questions about symptoms, diseases, treatments, and general wellness advice <br />Powered by Gemini-pro.
                 </p>
                 <div style={styles.suggestionBox(c)}>
                   <p style={{ fontSize: "12px", opacity: 0.6, margin: "0 0 12px 0", textAlign: "left" }}>
@@ -169,7 +210,16 @@ export default function DoctorXAIPage() {
                           : styles.botContent(c)
                     }
                   >
-                    <span style={{ whiteSpace: "pre-wrap" }}>{msg.text}</span>
+                    {msg.type === "bot" ? (
+                      <div
+                        dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.text) }}
+                        style={{
+                          lineHeight: "1.6",
+                        }}
+                      />
+                    ) : (
+                      msg.text
+                    )}
                   </div>
                   {msg.type === "user" && (
                     <img src="/assets/profile.jpg" alt="User" style={styles.avatar} />
@@ -201,8 +251,7 @@ export default function DoctorXAIPage() {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                maxLength={2000}
+                onKeyPress={handleKeyPress}
                 placeholder="Type your health question here..."
                 style={styles.input(c)}
                 disabled={loading}
@@ -210,7 +259,7 @@ export default function DoctorXAIPage() {
             </div>
             <button
               onClick={sendMessage}
-              disabled={loading || !input.trim()}
+              disabled={loading}
               style={styles.sendButton(c, loading)}
               title={loading ? "Waiting for response..." : "Send message"}
             >

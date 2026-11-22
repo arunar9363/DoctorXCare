@@ -540,12 +540,12 @@ function SymptomChecker() {
     {
       icon: '🔍',
       title: 'Advanced AI Analysis',
-      description: 'Describe what you feel and answer follow-up questions that adapt to your symptoms and earlier answers.'
+      description: 'Clinical Insights by Infermedica, DoctorXcare integrates the Infermedica API to analyze symptoms against millions of clinical cases, delivering research-backed, hospital-grade accuracy.'
     },
     {
       icon: '⚡',
       title: 'Instant Results',
-      description: 'Receive a care recommendation and an assessment report you can share with a healthcare professional.'
+      description: 'Swift and Actionable Triage Receive immediate guidance categorizing symptoms into Home Care, Weekly Monitoring, or Emergency Room (ER) visits for rapid, decisive health actions.'
     },
     {
       icon: '🎯',
@@ -555,7 +555,7 @@ function SymptomChecker() {
     {
       icon: '🔒',
       title: 'Complete Privacy',
-      description: 'You choose whether to save your completed assessment to your private account history.'
+      description: 'Your lab reports, symptom assessments, and AI health conversations are secured with end-to-end encryption, ensuring a strict privacy-first experience.'
     },
     {
       icon: '🏥',
@@ -612,7 +612,7 @@ function SymptomChecker() {
               Your <span className="gradient-text">Personal Health</span> Intelligence Platform
             </h1>
             <p style={styles.heroSubtitle}>
-              Answer 10 to 15 follow-up questions about your symptoms and get a personalized care recommendation and assessment report.
+              Experience clinical-grade symptom analysis powered by Infermedica. Get instant insights, personalized recommendations, and peace of mind all from the comfort of your home.
             </p>
 
             <div style={styles.statsContainer}>

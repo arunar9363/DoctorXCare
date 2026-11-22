@@ -1,16 +1,7 @@
 node_modules
-**/venv
-**/.venv
-**/__pycache__
-**/*.pyc
-dist
-.vercel
 .env
 .env.local
-**/.env
-**/.env.*
 .git
 .gitignore
 *.log
 .DS_Store
-tests

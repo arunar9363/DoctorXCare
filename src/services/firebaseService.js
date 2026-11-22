@@ -1,5 +1,4 @@
 import { db, auth } from '../firebase';
-import { CARE_GUIDANCE, SEX_LABELS } from '../../shared/triage.js';
 import { 
   collection, 
   doc, 
@@ -23,15 +22,13 @@ export const saveDiseaseToFirebase = async (diseaseData) => {
     const user = auth.currentUser;
     if (!user) throw new Error('User not authenticated');
 
-    const diseaseSlug = diseaseData.slug || diseaseData.name.toLowerCase().replace(/\s+/g, '-');
-    const diseaseId = diseaseData.bookmarkId || diseaseSlug;
+    const diseaseId = diseaseData.slug || diseaseData.name.toLowerCase().replace(/\s+/g, '-');
     const diseaseRef = doc(db, 'savedDiseases', user.uid, 'diseases', diseaseId);
 
     const diseaseToSave = {
       // Basic Information
       diseaseName: diseaseData.name,
-      diseaseSlug,
-      ...(diseaseData.id != null ? { diseaseId: String(diseaseData.id) } : {}),
+      diseaseSlug: diseaseId,
       category: diseaseData.category || 'General',
       description: diseaseData.description || '',
       severity: diseaseData.severity || 'Unknown',
@@ -59,10 +56,10 @@ export const saveDiseaseToFirebase = async (diseaseData) => {
       // Metadata
       image: diseaseData.image || '',
       savedAt: Timestamp.now(),
-      ...(diseaseData.notes !== undefined ? { notes: diseaseData.notes } : {})
+      notes: diseaseData.notes || ''
     };
 
-    await setDoc(diseaseRef, diseaseToSave, { merge: true });
+    await setDoc(diseaseRef, diseaseToSave);
     return { success: true, diseaseId };
   } catch (error) {
     console.error('Error saving disease:', error);
@@ -208,31 +205,25 @@ export const getSavedDiseasesStats = async () => {
 /**
  * Save assessment result to Firebase
  */
-export const saveAssessmentToFirebase = async (report, intake) => {
+export const saveAssessmentToFirebase = async (assessmentData) => {
   try {
     const user = auth.currentUser;
     if (!user) throw new Error('User not authenticated');
-    const guidance = CARE_GUIDANCE[report.triageLevel];
-    if (!report.id || !guidance) throw new Error('A completed assessment is required');
 
-    const assessmentId = 'assessment_' + report.id;
+    const assessmentId = `assessment_${Date.now()}`;
     const assessmentRef = doc(db, 'assessmentHistory', user.uid, 'assessments', assessmentId);
 
     const assessmentToSave = {
-      patientName: 'Symptom assessment',
-      age: intake.age === '' ? null : Number(intake.age),
-      sex: Object.hasOwn(SEX_LABELS, intake.sex) ? intake.sex : 'unspecified',
-      symptoms: intake.symptoms.trim() ? [intake.symptoms.trim()] : [],
-      conditions: report.conditions,
-      triageLevel: report.triageLevel,
-      triageDescription: report.rationale,
-      recommendations: [guidance.action],
-      completedAt: Timestamp.fromDate(new Date(report.completedAt)),
-      questionCount: report.answered,
-      summary: report.summary,
-      findings: report.findings,
-      limitations: report.limitations,
-      source: report.source,
+      patientName: assessmentData.patientName || 'Anonymous',
+      age: assessmentData.age || 0,
+      sex: assessmentData.sex || 'male',
+      symptoms: assessmentData.symptoms || [],
+      conditions: assessmentData.conditions || [],
+      triageLevel: assessmentData.triageLevel || 'self_care',
+      triageDescription: assessmentData.triageDescription || '',
+      recommendations: assessmentData.recommendations || [],
+      completedAt: Timestamp.now(),
+      evidenceCount: assessmentData.evidenceCount || 0
     };
 
     await setDoc(assessmentRef, assessmentToSave);

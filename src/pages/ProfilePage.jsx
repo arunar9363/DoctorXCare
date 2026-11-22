@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { auth, db } from '../firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { User, Mail, Calendar, MapPin, Droplet, Users, FileText, X, Edit2, Save, XCircle, Clock, AlertCircle } from 'lucide-react';
 import profileImage from '/assets/profile.jpg';
@@ -142,7 +142,7 @@ const ProfilePage = ({ show, onClose, onShowToast }) => {
     setSaving(true);
     try {
       const userDocRef = doc(db, 'users', auth.currentUser.uid);
-      await setDoc(userDocRef, editedData, { merge: true });
+      await updateDoc(userDocRef, editedData);
       setUserData(editedData);
       setIsEditing(false);
       setShowEditPrompt(false);

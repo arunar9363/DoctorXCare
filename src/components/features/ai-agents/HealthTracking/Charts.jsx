@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LineChart,
    Line, AreaChart,
    Area,
@@ -14,8 +14,12 @@ import { TrendingUp, TrendingDown, Activity, Calendar } from 'lucide-react';
 const Charts = ({
   patientData,
   metricType = 'blood_pressure',
-  timeRange = 30
+  timeRange = 30,
+  onTrendInsight
 }) => {
+  const [chartData, setChartData] = useState([]);
+  const [trendDirection, setTrendDirection] = useState('stable');
+  const [statistics, setStatistics] = useState({});
   const [selectedTimeRange, setSelectedTimeRange] = useState(timeRange);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const chartRef = useRef(null);
@@ -32,45 +36,155 @@ const Charts = ({
     return () => observer.disconnect();
   }, []);
 
-  const { chartData, statistics, trendDirection, displayUnit, mixedUnits } = useMemo(() => {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - selectedTimeRange);
-    const dated = (patientData || []).filter(item => new Date(item.date) >= cutoff)
-      .sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
-    const isPressure = metricType === "blood_pressure";
-    const displayUnit = isPressure ? "mmHg" : dated.at(-1)?.unit;
-    const comparable = isPressure ? dated : dated.filter(item => item.unit === displayUnit);
-    const chartData = comparable.map(item => ({
-      ...item,
-      date: new Date(item.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    }));
-    const average = values => values.reduce((a, b) => a + b, 0) / values.length;
-    const values = comparable.map(item => isPressure ? item.systolic : item.value);
-    const diastolic = isPressure ? comparable.map(item => item.diastolic) : [];
-    let statistics = {};
-    if (values.length) {
-      statistics = isPressure ? {
-        systolicAvg: average(values).toFixed(1), systolicMin: Math.min(...values), systolicMax: Math.max(...values),
-        diastolicAvg: average(diastolic).toFixed(1), diastolicMin: Math.min(...diastolic), diastolicMax: Math.max(...diastolic),
-      } : { average: average(values).toFixed(1), min: Math.min(...values), max: Math.max(...values), latest: values.at(-1) };
+  // Process data when props change
+  useEffect(() => {
+    if (patientData && patientData.length > 0) {
+      processChartData();
     }
-    let trendDirection = "insufficient";
-    if (values.length >= 2) {
-      const half = Math.floor(values.length / 2);
-      const first = average(values.slice(0, half));
-      const change = average(values.slice(half)) - first;
-      trendDirection = change === 0 || Math.abs(change) < Math.abs(first) * 0.03
-        ? "stable" : (change > 0 ? "increasing" : "decreasing");
-    }
-    return { chartData, statistics, trendDirection, displayUnit, mixedUnits: comparable.length !== dated.length };
   }, [patientData, metricType, selectedTimeRange]);
+
+  const processChartData = () => {
+    // Filter data by time range
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - selectedTimeRange);
+
+    const filteredData = patientData
+      .filter(item => new Date(item.date) >= cutoffDate)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    // Format data based on metric type
+    let formattedData = [];
+
+    if (metricType === 'blood_pressure') {
+      formattedData = filteredData.map(item => ({
+        date: formatDate(item.date),
+        systolic: item.systolic,
+        diastolic: item.diastolic,
+        pulse: item.pulse || null,
+        fullDate: item.date
+      }));
+    } else if (metricType === 'blood_glucose') {
+      formattedData = filteredData.map(item => ({
+        date: formatDate(item.date),
+        value: item.value,
+        context: item.context || 'General',
+        fullDate: item.date
+      }));
+    } else {
+      // Generic format for other metrics
+      formattedData = filteredData.map(item => ({
+        date: formatDate(item.date),
+        value: item.value,
+        unit: item.unit,
+        fullDate: item.date
+      }));
+    }
+
+    setChartData(formattedData);
+    calculateStatistics(formattedData);
+    calculateTrend(formattedData);
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const calculateStatistics = (data) => {
+    if (data.length === 0) return;
+
+    let values = [];
+    if (metricType === 'blood_pressure') {
+      const systolicValues = data.map(d => d.systolic);
+      const diastolicValues = data.map(d => d.diastolic);
+
+      setStatistics({
+        systolicAvg: (systolicValues.reduce((a, b) => a + b, 0) / systolicValues.length).toFixed(1),
+        systolicMin: Math.min(...systolicValues),
+        systolicMax: Math.max(...systolicValues),
+        diastolicAvg: (diastolicValues.reduce((a, b) => a + b, 0) / diastolicValues.length).toFixed(1),
+        diastolicMin: Math.min(...diastolicValues),
+        diastolicMax: Math.max(...diastolicValues),
+      });
+    } else {
+      values = data.map(d => d.value).filter(v => v !== null && v !== undefined);
+
+      if (values.length > 0) {
+        setStatistics({
+          average: (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1),
+          min: Math.min(...values),
+          max: Math.max(...values),
+          latest: values[values.length - 1]
+        });
+      }
+    }
+  };
+
+  const calculateTrend = (data) => {
+    if (data.length < 2) {
+      setTrendDirection('insufficient');
+      return;
+    }
+
+    // Simple trend calculation: compare first half average to second half average
+    const midPoint = Math.floor(data.length / 2);
+    let firstHalfAvg, secondHalfAvg;
+
+    if (metricType === 'blood_pressure') {
+      const firstHalfSystolic = data.slice(0, midPoint).map(d => d.systolic);
+      const secondHalfSystolic = data.slice(midPoint).map(d => d.systolic);
+
+      firstHalfAvg = firstHalfSystolic.reduce((a, b) => a + b, 0) / firstHalfSystolic.length;
+      secondHalfAvg = secondHalfSystolic.reduce((a, b) => a + b, 0) / secondHalfSystolic.length;
+    } else {
+      const firstHalfValues = data.slice(0, midPoint).map(d => d.value).filter(v => v);
+      const secondHalfValues = data.slice(midPoint).map(d => d.value).filter(v => v);
+
+      if (firstHalfValues.length === 0 || secondHalfValues.length === 0) {
+        setTrendDirection('insufficient');
+        return;
+      }
+
+      firstHalfAvg = firstHalfValues.reduce((a, b) => a + b, 0) / firstHalfValues.length;
+      secondHalfAvg = secondHalfValues.reduce((a, b) => a + b, 0) / secondHalfValues.length;
+    }
+
+    const percentageChange = ((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100;
+
+    if (Math.abs(percentageChange) < 3) {
+      setTrendDirection('stable');
+    } else if (percentageChange > 0) {
+      // For BP and glucose, increasing is bad
+      if (metricType === 'blood_pressure' || metricType === 'blood_glucose') {
+        setTrendDirection('worsening');
+      } else {
+        setTrendDirection('improving');
+      }
+    } else {
+      // For BP and glucose, decreasing is good
+      if (metricType === 'blood_pressure' || metricType === 'blood_glucose') {
+        setTrendDirection('improving');
+      } else {
+        setTrendDirection('worsening');
+      }
+    }
+
+    // Notify parent component if callback exists
+    if (onTrendInsight) {
+      onTrendInsight({
+        direction: trendDirection,
+        percentageChange: percentageChange.toFixed(1),
+        metricType
+      });
+    }
+  };
 
   const getTrendIcon = () => {
     switch (trendDirection) {
-      case 'decreasing':
-        return <TrendingDown className="text-blue-500" size={24} />;
-      case 'increasing':
-        return <TrendingUp className="text-blue-500" size={24} />;
+      case 'improving':
+        return <TrendingDown className="text-green-500" size={24} />;
+      case 'worsening':
+        return <TrendingUp className="text-red-500" size={24} />;
       case 'stable':
         return <Activity className="text-blue-500" size={24} />;
       default:
@@ -80,10 +194,10 @@ const Charts = ({
 
   const getTrendColor = () => {
     switch (trendDirection) {
-      case 'decreasing':
-        return '#3b82f6';
-      case 'increasing':
-        return '#3b82f6';
+      case 'improving':
+        return '#10b981';
+      case 'worsening':
+        return '#ef4444';
       case 'stable':
         return '#3b82f6';
       default:
@@ -196,7 +310,7 @@ const Charts = ({
           stroke={isDarkMode ? '#9ca3af' : '#6b7280'}
           style={{ fontSize: '12px' }}
           label={{
-            value: displayUnit,
+            value: 'mg/dL',
             angle: -90,
             position: 'insideLeft',
             style: { fill: isDarkMode ? '#9ca3af' : '#6b7280' }
@@ -282,9 +396,9 @@ const Charts = ({
               fontWeight: '600',
               margin: '4px 0 0 0'
             }}>
-              {trendDirection === 'decreasing' && 'Decreasing'}
-              {trendDirection === 'increasing' && 'Increasing'}
-              {trendDirection === 'stable' && 'Stable'}
+              {trendDirection === 'improving' && '↓ Improving Trend'}
+              {trendDirection === 'worsening' && '↑ Needs Attention'}
+              {trendDirection === 'stable' && '→ Stable'}
               {trendDirection === 'insufficient' && 'Insufficient Data'}
             </p>
           </div>
@@ -428,8 +542,6 @@ const Charts = ({
           </div>
         </div>
       )}
-
-      {mixedUnits && <p>Chart and statistics show readings in {displayUnit}.</p>}
 
       {/* Chart */}
       <div ref={chartRef}>

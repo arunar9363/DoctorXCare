@@ -350,7 +350,7 @@ function Services() {
     {
       id: 1,
       title: 'AI Symptom Analysis',
-      description: 'Answer questions about your symptoms and receive an assessment report with guidance on when to seek care.',
+      description: 'Experience clinical-grade AI that analyzes your symptoms with precision, providing instant triage advice backed by medical research.',
       features: [
         'Advanced machine learning algorithms',
         'Real-time symptom assessment',

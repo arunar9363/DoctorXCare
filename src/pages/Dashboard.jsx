@@ -5,7 +5,6 @@ import { auth, db } from "../firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { getAssessmentHistory, getSavedDiseases } from "../services/firebaseService";
-import { CARE_GUIDANCE } from "../../shared/triage.js";
 import profileImage from "/assets/profile.jpg";
 
 // Helper function to format date
@@ -531,6 +530,73 @@ function Dashboard() {
       transition: "transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)"
     },
 
+    // AI Doctor card special style — emoji-based, no image needed
+    aiDoctorCard: (index, isVisibleCard) => ({
+      background: isDarkMode
+        ? 'linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%)'
+        : 'linear-gradient(135deg, rgba(14, 165, 233, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%)',
+      padding: "32px 28px",
+      borderRadius: "20px",
+      boxShadow: isDarkMode
+        ? '0 8px 30px rgba(0, 0, 0, 0.3)'
+        : '0 8px 30px rgba(0, 0, 0, 0.08)',
+      border: isDarkMode
+        ? "1px solid rgba(14, 165, 233, 0.2)"
+        : "1px solid rgba(14, 165, 233, 0.25)",
+      transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+      cursor: "pointer",
+      display: "flex",
+      flexDirection: "column",
+      minHeight: "340px",
+      position: "relative",
+      overflow: "hidden",
+      opacity: isVisibleCard ? 1 : 0,
+      transform: isVisibleCard ? 'translateY(0)' : 'translateY(40px)',
+      animation: isVisibleCard ? `fadeInUp 0.6s ease-out ${index * 0.1}s backwards` : 'none'
+    }),
+    aiDoctorGlowBg: {
+      position: 'absolute',
+      top: '-40px',
+      right: '-40px',
+      width: '180px',
+      height: '180px',
+      borderRadius: '50%',
+      background: 'radial-gradient(circle, rgba(14,165,233,0.12) 0%, transparent 70%)',
+      pointerEvents: 'none'
+    },
+    aiDoctorEmoji: {
+      fontSize: '64px',
+      marginBottom: '20px',
+      display: 'block',
+      lineHeight: 1,
+      filter: 'drop-shadow(0 4px 12px rgba(14,165,233,0.3))',
+      transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
+    },
+    aiDoctorBadge: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '6px',
+      padding: '5px 12px',
+      background: isDarkMode
+        ? 'rgba(14, 165, 233, 0.15)'
+        : 'rgba(14, 165, 233, 0.1)',
+      border: '1px solid rgba(14, 165, 233, 0.3)',
+      borderRadius: '50px',
+      fontSize: '0.72rem',
+      fontWeight: 700,
+      color: '#0ea5e9',
+      letterSpacing: '0.5px',
+      textTransform: 'uppercase',
+      marginBottom: '12px'
+    },
+    aiDoctorPulseDot: {
+      width: '7px',
+      height: '7px',
+      borderRadius: '50%',
+      background: '#22c55e',
+      animation: 'pulse 1.5s ease-in-out infinite'
+    },
+
     // Bottom Section
     bottomSection: {
       display: "grid",
@@ -661,7 +727,7 @@ function Dashboard() {
         <div style={styles.loader} className="loader-spin">
           <div style={styles.loaderInner} className="loader-spin"></div>
         </div>
-        <div style={styles.loadingText}>Loading Dashboard...</div>
+        <div style={styles.loadingText}>Preparing your health dashboard…</div>
       </div>
     );
   }
@@ -675,9 +741,11 @@ function Dashboard() {
         <div style={styles.welcomeSection}>
           <div style={styles.welcomeGlow}></div>
           <div style={styles.welcomeText}>
-            <span style={styles.badge}>HEALTHCARE DASHBOARD</span>
-            <h1 style={styles.h1}>Welcome back, {userName}!</h1>
-            <p style={styles.subtitle}>Here's what's happening with your health today.</p>
+            <span style={styles.badge}>Your Personal Health Hub</span>
+            <h1 style={styles.h1}>Good to see you, {userName}!</h1>
+            <p style={styles.subtitle}>
+              Your health journey continues here. Let's take a look at what matters most to you today.
+            </p>
           </div>
           <div style={styles.profileContainer}>
             <div style={styles.profileRing}></div>
@@ -711,7 +779,7 @@ function Dashboard() {
           >
             <div style={styles.statIcon}>📊</div>
             <div style={styles.statValue}>{recentAssessments.length}</div>
-            <div style={styles.statLabel}>Recent Assessments</div>
+            <div style={styles.statLabel}>Health Assessments Done</div>
           </div>
 
           <div
@@ -731,7 +799,7 @@ function Dashboard() {
           >
             <div style={styles.statIcon}>💾</div>
             <div style={styles.statValue}>{savedDiseases.length}</div>
-            <div style={styles.statLabel}>Saved Diseases</div>
+            <div style={styles.statLabel}>Conditions You're Tracking</div>
           </div>
 
           <div
@@ -751,7 +819,7 @@ function Dashboard() {
           >
             <div style={styles.statIcon}>🏥</div>
             <div style={styles.statValue}>24/7</div>
-            <div style={styles.statLabel}>AI Assistant</div>
+            <div style={styles.statLabel}>Always Here for You</div>
           </div>
 
           <div
@@ -771,15 +839,15 @@ function Dashboard() {
             }}
           >
             <div style={styles.statIcon}>🎯</div>
-            <div style={styles.statValue}>7</div>
-            <div style={styles.statLabel}>Active Services</div>
+            <div style={styles.statValue}>8</div>
+            <div style={styles.statLabel}>Tools at Your Fingertips</div>
           </div>
         </div>
 
         {/* Services Section */}
         <div style={styles.sectionHeader}>
           <h2 style={styles.sectionTitle}>
-            Quick Access Services
+            What would you like to do today?
             <div style={styles.titleUnderline}></div>
           </h2>
         </div>
@@ -787,35 +855,35 @@ function Dashboard() {
         <div style={styles.servicesGrid}>
           {[
             {
-              title: 'Analyze Symptoms',
-              desc: 'Check your symptoms using our advanced AI to get instant triage advice.',
-              link: 'Start Check',
+              title: 'Check Your Symptoms',
+              desc: 'Not feeling well? Tell us what\'s going on and our AI will help you understand your symptoms and what to do next — quickly and without the wait.',
+              link: 'Start Symptom Check',
               route: '/symptoms',
               image: '/assets/Symptomspage.svg',
               icon: '🔬'
             },
             {
-              title: 'Disease Library',
-              desc: 'Search our verified medical library for detailed disease information.',
-              link: 'Explore',
+              title: 'Explore the Disease Library',
+              desc: 'Curious about a condition? Browse our clinically-verified library of thousands of diseases, written in plain language — so you actually understand what you\'re reading.',
+              link: 'Browse Library',
               route: '/diseases',
               image: '/assets/diseas.svg',
               icon: '📚'
             },
             {
-              title: 'Lab Report Analysis',
-              desc: 'Upload lab reports or medical imaging for AI-powered analysis and insights.',
-              link: 'Upload Now',
+              title: 'Understand Your Lab Reports',
+              desc: 'Got a report and not sure what it means? Upload your lab results or medical images and let our AI walk you through them in a way that actually makes sense.',
+              link: 'Upload a Report',
               route: '/lab-analysis',
               image: '/assets/report_analysis.svg',
               icon: '🧪'
             },
             {
-              title: 'AI Health Assistant',
-              desc: 'Chat with DoctorXCare for personalized health guidance 24/7.',
-              link: 'Chat Now',
-              route: '/doctorx-ai',
-              image: '/assets/hi.svg',
+              title: 'Talk to Your AI Doctor',
+              desc: 'Just describe how you\'re feeling — in your own words. Doctorxcare Assistance will listen, ask the right follow-up questions, and give you a clear picture of what might be going on.',
+              link: 'Begin Consultation',
+              route: '/ai-doctor',
+              image: '/assets/aidoctor2.jpeg',
               icon: '💬'
             }
           ].map((service, index) => (
@@ -859,6 +927,7 @@ function Dashboard() {
               />
             </div>
           ))}
+
         </div>
 
         {/* Bottom Section */}
@@ -866,7 +935,7 @@ function Dashboard() {
           {/* Recent Assessments */}
           <div style={styles.sectionBox}>
             <div style={styles.boxHeader}>
-              <div style={styles.boxTitle}>Recent Assessments</div>
+              <div style={styles.boxTitle}>Your Recent Check-ins</div>
               <div
                 style={styles.viewAllLink}
                 onClick={() => navigate('/history')}
@@ -879,7 +948,7 @@ function Dashboard() {
                   e.target.style.color = '#0d9db8';
                 }}
               >
-                View All →
+                See Full History →
               </div>
             </div>
 
@@ -902,19 +971,19 @@ function Dashboard() {
                   <div style={styles.itemLeft}>
                     <div style={styles.itemIcon}>📋</div>
                     <div style={styles.itemContent}>
-                      <div style={styles.itemTitle}>{item.patientName || 'Self Assessment'}</div>
-                      <div style={styles.itemSub}>{formatDate(item.completedAt)} • {item.symptoms?.length || 0} Symptoms</div>
+                      <div style={styles.itemTitle}>{item.patientName || 'Personal Assessment'}</div>
+                      <div style={styles.itemSub}>{formatDate(item.completedAt)} · {item.symptoms?.length || 0} symptoms reported</div>
                     </div>
                   </div>
                   <span style={styles.itemBadge(getSeverityColor(item.triageLevel))}>
-                    {CARE_GUIDANCE[item.triageLevel]?.label ?? (item.triageLevel === 'no_action' ? 'Stable' : 'Check Required')}
+                    {item.triageLevel === 'no_action' ? 'All Clear' : 'Follow-up Advised'}
                   </span>
                 </div>
               ))
             ) : (
               <div style={styles.emptyState}>
                 <div style={styles.emptyIcon}>📊</div>
-                <div style={styles.emptyText}>No recent assessments found</div>
+                <div style={styles.emptyText}>No check-ins yet — your first one is just a click away</div>
               </div>
             )}
           </div>
@@ -922,7 +991,7 @@ function Dashboard() {
           {/* Saved Diseases */}
           <div style={styles.sectionBox}>
             <div style={styles.boxHeader}>
-              <div style={styles.boxTitle}>Saved Diseases</div>
+              <div style={styles.boxTitle}>Conditions You're Following</div>
               <div
                 style={styles.viewAllLink}
                 onClick={() => navigate('/history')}
@@ -944,7 +1013,7 @@ function Dashboard() {
                 <div
                   key={item.id}
                   style={styles.listItem}
-                  onClick={() => navigate("/diseases/" + encodeURIComponent(item.diseaseSlug) + (item.diseaseId ? "?id=" + encodeURIComponent(item.diseaseId) : ""))}
+                  onClick={() => navigate(`/diseases/${item.diseaseSlug}`)}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = 'translateX(4px)';
                     e.currentTarget.style.boxShadow = isDarkMode
@@ -969,7 +1038,7 @@ function Dashboard() {
             ) : (
               <div style={styles.emptyState}>
                 <div style={styles.emptyIcon}>💾</div>
-                <div style={styles.emptyText}>No saved diseases yet</div>
+                <div style={styles.emptyText}>Save conditions from the library to keep them handy</div>
               </div>
             )}
           </div>

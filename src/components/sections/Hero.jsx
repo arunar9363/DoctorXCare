@@ -613,7 +613,7 @@ function Hero() {
   const features = [
     {
       title: "AI Symptom Analysis",
-      desc: "A guided symptom interview with a care recommendation"
+      desc: "Clinical-grade AI powered by Infermedica for instant triage"
     },
     {
       title: "Disease Knowledge Hub",

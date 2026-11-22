@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, FileText, Download, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CheckCircle, AlertCircle, FileText, Download, RefreshCw } from 'lucide-react';
 
 const LabResult = ({ analysis, onNewAnalysis }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -15,12 +15,87 @@ const LabResult = ({ analysis, onNewAnalysis }) => {
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     return () => observer.disconnect();
   }, []);
-  const badgeConfig = {
-    icon: <FileText size={22} />,
-    text: "Report Summary",
-    textColor: "#3b82f6",
-    iconColor: "#3b82f6",
+  const analyzeSeverity = (text) => {
+    if (!text) return 'unknown';
+    const lowerText = text.toLowerCase();
+
+    const criticalKeywords = [
+      'critical', 'severe', 'emergency', 'urgent', 'high risk', 'danger',
+      'significantly elevated', 'significantly high', 'significantly low',
+      'very high', 'very low', 'extremely', 'acute'
+    ];
+
+    const warningKeywords = [
+      'elevated', 'mildly elevated', 'moderate', 'concern', 'attention',
+      'monitor', 'slightly abnormal', 'borderline', 'mild', 'mildly',
+      'slightly low', 'slightly high', 'slightly elevated', 'low',
+      'lower limit', 'upper limit', 'needs attention'
+    ];
+
+    const normalKeywords = [
+      'normal', 'healthy', 'good', 'stable', 'no issues', 'within range',
+      'satisfactory', 'adequate', 'within normal', 'no abnormal',
+      'not detected', 'negative'
+    ];
+
+    let criticalCount = 0;
+    let warningCount = 0;
+    let normalCount = 0;
+
+    criticalKeywords.forEach(keyword => {
+      if (lowerText.includes(keyword)) criticalCount++;
+    });
+
+    warningKeywords.forEach(keyword => {
+      if (lowerText.includes(keyword)) warningCount++;
+    });
+
+    normalKeywords.forEach(keyword => {
+      if (lowerText.includes(keyword)) normalCount++;
+    });
+
+    if (criticalCount > 0) return 'critical';
+    if (warningCount > 0) return 'warning';
+    if (normalCount > warningCount) return 'normal';
+    return 'info';
   };
+
+  const severity = analyzeSeverity(analysis);
+
+  const getBadgeConfig = () => {
+    switch (severity) {
+      case 'critical':
+        return {
+          icon: <AlertCircle size={22} />,
+          text: 'Needs Immediate Attention',
+          textColor: '#dc2626',
+          iconColor: '#dc2626'
+        };
+      case 'warning':
+        return {
+          icon: <AlertTriangle size={22} />,
+          text: 'Requires Monitoring',
+          textColor: '#ea580c',
+          iconColor: '#ea580c'
+        };
+      case 'normal':
+        return {
+          icon: <CheckCircle size={22} />,
+          text: 'Results Look Good',
+          textColor: '#0d9db8',
+          iconColor: '#0d9db8'
+        };
+      default:
+        return {
+          icon: <FileText size={22} />,
+          text: 'Analysis Complete',
+          textColor: '#3b82f6',
+          iconColor: '#3b82f6'
+        };
+    }
+  };
+
+  const badgeConfig = getBadgeConfig();
 
   const downloadPDF = async () => {
     try {
@@ -176,7 +251,13 @@ const LabResult = ({ analysis, onNewAnalysis }) => {
 
       yPosition += 10;
 
-      const statusColor = [59, 130, 246];
+      const statusColors = {
+        'critical': [220, 38, 38],
+        'warning': [234, 88, 12],
+        'normal': [13, 157, 184],
+        'info': [59, 130, 246]
+      };
+      const statusColor = statusColors[severity] || statusColors['info'];
 
       doc.setFillColor(statusColor[0], statusColor[1], statusColor[2]);
       doc.roundedRect(margin, yPosition, maxWidth, 12, 2, 2, 'F');
